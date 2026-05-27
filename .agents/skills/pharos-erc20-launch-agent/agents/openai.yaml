@@ -1,0 +1,6 @@
+interface:
+  display_name: "Pharos ERC20 Launch Agent"
+  short_description: "Safe ERC20 launch planning and deployment workflow"
+  default_prompt: "Use $pharos-erc20-launch-agent to prepare a safe ERC20 launch plan on Pharos Atlantic testnet."
+policy:
+  allow_implicit_invocation: true
