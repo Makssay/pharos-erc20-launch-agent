@@ -14,6 +14,7 @@ It is more than a quick deploy command: it validates token parameters, checks Ph
 - Node.js deployment project generation with `ethers` and `solc`.
 - Optional project-root npm scripts, so `npm run deploy` can call the guarded skill deploy flow from the project where the skill is installed.
 - Optional FaroSwap liquidity planning and `add-liquidity.mjs` generation for V2-style token/native liquidity.
+- Optional Bitverse V4 concentrated-liquidity planning and `add-bitverse-liquidity.mjs` generation for Pharos mainnet.
 - Verification checklist with constructor values.
 - Airdrop CSV starter template.
 - Markdown, JSON, and console reports.
@@ -55,6 +56,12 @@ Generate a launch project with a FaroSwap liquidity step:
 node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir ".\erc20-launch-demo" --install-project-scripts
 ```
 
+Generate a launch project with a Bitverse V4 liquidity step on mainnet:
+
+```powershell
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --deployer 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network mainnet --generate --backend node --generate-liquidity --liquidity-provider bitverse-v4 --liquidity-token-amount 100000 --liquidity-native-amount 0.5 --bitverse-tick-lower -887220 --bitverse-tick-upper 887220 --bitverse-position-liquidity 1000000000000000000 --output-dir ".\erc20-launch-demo" --install-project-scripts --confirm-mainnet
+```
+
 Compile generated Node.js deployer:
 
 ```powershell
@@ -91,6 +98,19 @@ $env:TOKEN_ADDRESS="0xDEPLOYED_TOKEN_ADDRESS"
 npm run add-liquidity
 ```
 
+Add Bitverse V4 liquidity after deployment:
+
+```powershell
+cd "F:\Pharos\erc20-launch-demo"
+npm install --no-audit --no-fund
+$env:PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
+$env:TOKEN_ADDRESS="0xDEPLOYED_TOKEN_ADDRESS"
+$env:BITVERSE_TICK_LOWER="-887220"
+$env:BITVERSE_TICK_UPPER="887220"
+$env:BITVERSE_POSITION_LIQUIDITY="1000000000000000000"
+npm run add-liquidity
+```
+
 If project scripts were installed:
 
 ```powershell
@@ -120,7 +140,7 @@ Use Pharos ERC20 Launch Agent to prepare a safe ERC20 launch plan called Demo Ph
 - Mainnet deployment should require explicit confirmation.
 - Review generated Solidity, launch config, and verification checklist before broadcasting.
 - Project-root `npm run deploy` is a wrapper around the same guarded skill command; it still requires `PRIVATE_KEY`.
-- FaroSwap liquidity is a separate post-deploy action. Confirm router, token address, amounts, slippage, and LP recipient before signing.
+- FaroSwap or Bitverse liquidity is a separate post-deploy action. Confirm router or PositionManager/Permit2, token address, amounts, tick range, slippage, and recipient before signing.
 
 ## Requirements
 
