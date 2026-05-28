@@ -1160,11 +1160,10 @@ function runFoundryDeploy(args, network) {
 function runNodeDeploy(args) {
   const outputDir = path.resolve(args.outputDir);
   if (!fs.existsSync(path.join(outputDir, "deploy.mjs"))) throw new Error("Node deployer was not generated. Use --backend node or --backend both.");
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const npmCheck = spawnSync(npmCommand, ["--version"], { encoding: "utf8" });
-  if (npmCheck.error || npmCheck.status !== 0) throw new Error("npm is not available in this shell");
+  const npmRunner = resolveNpmRunner();
+  if (!npmRunner) throw new Error("npm is not available in this shell");
   if (!fs.existsSync(path.join(outputDir, "node_modules"))) {
-    const install = spawnSync(npmCommand, ["install", "--no-audit", "--no-fund"], {
+    const install = spawnSync(npmRunner.command, [...npmRunner.argsPrefix, "install", "--no-audit", "--no-fund"], {
       cwd: outputDir,
       encoding: "utf8",
       env: process.env
@@ -1175,18 +1174,52 @@ function runNodeDeploy(args) {
         stdout: install.stdout || "",
         stderr: install.stderr || "",
         error: install.error ? install.error.message : "npm install failed",
-        command: "npm install --no-audit --no-fund"
+        command: npmRunner.displayInstall
       };
     }
   }
-  const result = spawnSync(npmCommand, ["run", "deploy"], { cwd: outputDir, encoding: "utf8", env: process.env });
+  const result = spawnSync(process.execPath, ["deploy.mjs"], { cwd: outputDir, encoding: "utf8", env: process.env });
   return {
     status: result.status,
     stdout: redactSecret(result.stdout || "", process.env.PRIVATE_KEY),
     stderr: redactSecret(result.stderr || "", process.env.PRIVATE_KEY),
     error: result.error ? result.error.message : null,
-    command: "npm run deploy"
+    command: "node deploy.mjs"
   };
+}
+
+function resolveNpmRunner() {
+  const candidates = [];
+  if (process.env.npm_execpath) {
+    const npmExecPath = process.env.npm_execpath;
+    if (/\.(?:mjs|cjs|js)$/i.test(npmExecPath)) {
+      candidates.push({
+        command: process.execPath,
+        argsPrefix: [npmExecPath],
+        displayInstall: "node <npm-cli> install --no-audit --no-fund"
+      });
+    } else {
+      candidates.push({
+        command: npmExecPath,
+        argsPrefix: [],
+        displayInstall: "npm install --no-audit --no-fund"
+      });
+    }
+  }
+  candidates.push({
+    command: process.platform === "win32" ? "npm.cmd" : "npm",
+    argsPrefix: [],
+    displayInstall: "npm install --no-audit --no-fund"
+  });
+
+  for (const candidate of candidates) {
+    const check = spawnSync(candidate.command, [...candidate.argsPrefix, "--version"], {
+      encoding: "utf8",
+      env: process.env
+    });
+    if (!check.error && check.status === 0) return candidate;
+  }
+  return null;
 }
 
 function redactSecret(text, secret) {
