@@ -12,6 +12,7 @@ It is more than a quick deploy command: it validates token parameters, checks Ph
 - Standalone fixed-supply ERC20 contract generation.
 - Foundry deployment project generation.
 - Node.js deployment project generation with `ethers` and `solc`.
+- Optional project-root npm scripts, so `npm run deploy` can call the guarded skill deploy flow from the project where the skill is installed.
 - Verification checklist with constructor values.
 - Airdrop CSV starter template.
 - Markdown, JSON, and console reports.
@@ -44,7 +45,7 @@ node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name 
 Generate both Foundry and Node.js launch files:
 
 ```powershell
-node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --deployer 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir "F:\Pharos\erc20-launch-demo"
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --deployer 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir "F:\Pharos\erc20-launch-demo" --install-project-scripts
 ```
 
 Compile generated Node.js deployer:
@@ -63,6 +64,15 @@ $env:PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
 $env:RPC_URL="https://atlantic.dplabs-internal.com"
 npm run deploy
 ```
+
+Deploy with Node.js from the project where the skill is installed:
+
+```powershell
+$env:PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
+npm run deploy
+```
+
+The project-root `npm run deploy` script is only installed when generation uses `--install-project-scripts`. If your project already has a `deploy` script, the skill keeps it and adds `npm run pharos:erc20:deploy` instead.
 
 Deploy with Foundry after review:
 
@@ -85,6 +95,7 @@ Use Pharos ERC20 Launch Agent to prepare a safe ERC20 launch plan called Demo Ph
 - Use Atlantic testnet before mainnet.
 - Mainnet deployment should require explicit confirmation.
 - Review generated Solidity, launch config, and verification checklist before broadcasting.
+- Project-root `npm run deploy` is a wrapper around the same guarded skill command; it still requires `PRIVATE_KEY`.
 
 ## Requirements
 
