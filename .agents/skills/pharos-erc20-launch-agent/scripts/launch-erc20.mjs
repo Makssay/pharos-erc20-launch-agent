@@ -55,7 +55,7 @@ async function main() {
     plan.generatedFiles = generated.files;
     plan.generatedProjectDir = path.resolve(outputDir);
     plan.commands = generated.commands;
-    addCheck(plan, "OK", `Generated launch project at ${path.resolve(outputDir)}.`);
+    addCheck(plan, "OK", `Generated launch project: ${path.basename(path.resolve(outputDir))}.`);
     fs.writeFileSync(path.join(plan.generatedProjectDir, "launch-plan.md"), renderMarkdown(plan), "utf8");
     if (!plan.generatedFiles.includes("launch-plan.md")) plan.generatedFiles.push("launch-plan.md");
   }
@@ -1026,37 +1026,39 @@ function renderPlan(plan, args) {
 function renderMarkdown(plan) {
   const lines = [];
   lines.push("# Pharos ERC20 Launch Plan", "");
-  lines.push(`Generated: ${plan.generatedAt}`);
-  lines.push(`Mode: ${plan.mode}`, "");
-  lines.push("## Network", "", "| Field | Value |", "| --- | --- |");
-  lines.push(`| Network | ${plan.network.name} |`);
-  lines.push(`| Chain ID | ${plan.network.chainId} |`);
-  lines.push(`| Native token | ${plan.network.nativeToken} |`);
-  lines.push(`| RPC | ${plan.network.rpcUrl} |`);
-  lines.push(`| Explorer | ${plan.network.explorerUrl} |`, "");
-  lines.push("## Token", "", "| Field | Value |", "| --- | --- |");
-  lines.push(`| Name | ${plan.token.name} |`);
-  lines.push(`| Symbol | ${plan.token.symbol} |`);
-  lines.push(`| Decimals | ${plan.token.decimals} |`);
-  lines.push(`| Human supply | ${plan.token.supplyInput} |`);
-  lines.push(`| Base-unit supply | ${plan.token.initialSupplyBaseUnits} |`);
-  lines.push(`| Contract | ${plan.token.contractName} |`);
-  lines.push(`| Owner | ${plan.addresses.owner || "deployer"} |`);
-  lines.push(`| Deployer | ${plan.addresses.deployer || "not provided"} |`);
-  lines.push(`| Backends | ${plan.backends.join(", ")} |`, "");
-  lines.push("## Checks", "", "| Status | Check |", "| --- | --- |");
-  for (const check of plan.checks) lines.push(`| ${check.status} | ${check.message} |`);
-  lines.push("", "## Estimates", "", "| Field | Value |", "| --- | --- |");
-  lines.push(`| Gas price | ${plan.estimates.gasPriceWei || "fallback 10000000000"} wei |`);
-  lines.push(`| Deployment gas limit estimate | ${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()} |`);
-  lines.push(`| Estimated deployment cost | ${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken} |`);
-  if (plan.estimates.deployerBalanceWei) lines.push(`| Deployer balance | ${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken} |`);
+  lines.push(`Generated: \`${plan.generatedAt}\``);
+  lines.push(`Mode: \`${plan.mode}\``, "");
+  lines.push("## Summary", "");
+  lines.push(`- Token: **${plan.token.name}** (\`${plan.token.symbol}\`)`);
+  lines.push(`- Network: \`${plan.network.name}\` (${plan.network.chainId}, ${plan.network.nativeToken})`);
+  lines.push(`- Supply: \`${plan.token.supplyInput}\` tokens`);
+  lines.push(`- Owner: \`${plan.addresses.owner || "deployer"}\``);
+  lines.push(`- Deployer: \`${plan.addresses.deployer || "not provided"}\``);
+  lines.push(`- Backends: \`${plan.backends.join(", ")}\``, "");
+  lines.push("## Network", "");
+  lines.push(`- RPC: \`${plan.network.rpcUrl}\``);
+  lines.push(`- Explorer: ${plan.network.explorerUrl}`);
+  lines.push(`- Native token: \`${plan.network.nativeToken}\``, "");
+  lines.push("## Token Config", "");
+  lines.push(`- Contract: \`${plan.token.contractName}\``);
+  lines.push(`- Decimals: \`${plan.token.decimals}\``);
+  lines.push(`- Human supply: \`${plan.token.supplyInput}\``);
+  lines.push(`- Base-unit supply: \`${plan.token.initialSupplyBaseUnits}\``, "");
+  lines.push("## Checks", "");
+  for (const check of plan.checks) lines.push(`- ${statusBadge(check.status)} ${check.message}`);
+  lines.push("", "## Estimates", "");
+  lines.push(`- Gas price: \`${plan.estimates.gasPriceWei || "fallback 10000000000"} wei\``);
+  lines.push(`- Deployment gas limit estimate: \`${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}\``);
+  lines.push(`- Estimated deployment cost: \`${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}\``);
+  if (plan.estimates.deployerBalanceWei) lines.push(`- Deployer balance: \`${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken}\``);
   if (plan.generatedProjectDir) {
-    lines.push("", "## Generated Project", "", `Directory: \`${plan.generatedProjectDir}\``, "");
+    lines.push("", "## Generated Project", "", "Directory: current launch project folder", "");
     for (const file of plan.generatedFiles) lines.push(`- \`${file}\``);
   }
   if (plan.commands?.powershell?.length) {
-    lines.push("", "## Deployment Commands", "", "PowerShell:", "", "```powershell", ...plan.commands.powershell, "```", "", "Bash:", "", "```bash", ...plan.commands.bash, "```");
+    lines.push("", "## Deployment Commands", "");
+    lines.push("### PowerShell", "", "```powershell", ...plan.commands.powershell, "```", "");
+    lines.push("### Bash", "", "```bash", ...plan.commands.bash, "```");
   }
   lines.push("", "## Recommendations", "");
   for (const item of plan.recommendations) lines.push(`- ${item}`);
@@ -1078,27 +1080,101 @@ function renderConsole(plan, args) {
     if (status === "FAIL") return `${COLORS.red}${text}${COLORS.reset}`;
     return text;
   };
-  const title = args.noColor ? "PHAROS ERC20 LAUNCH PLAN" : `${COLORS.bold}${COLORS.cyan}PHAROS ERC20 LAUNCH PLAN${COLORS.reset}`;
-  const lines = [title, `Generated: ${plan.generatedAt}`, `Mode: ${plan.mode}`, ""];
-  lines.push(`Network: ${plan.network.name} (${plan.network.chainId}, ${plan.network.nativeToken})`);
-  lines.push(`Token: ${plan.token.name} (${plan.token.symbol})`);
-  lines.push(`Supply: ${plan.token.supplyInput} (${plan.token.initialSupplyBaseUnits} base units)`);
-  lines.push(`Owner: ${plan.addresses.owner || "deployer"}`);
-  lines.push(`Deployer: ${plan.addresses.deployer || "not provided"}`);
-  lines.push(`Backends: ${plan.backends.join(", ")}`, "", "Checks:");
-  for (const check of plan.checks) lines.push(`  ${color(check.status, `[${check.status}]`)} ${check.message}`);
-  lines.push("", "Estimate:");
-  lines.push(`  Gas price: ${plan.estimates.gasPriceWei || "fallback 10000000000"} wei`);
-  lines.push(`  Deploy gas limit: ${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}`);
-  lines.push(`  Estimated cost: ${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}`);
-  if (plan.generatedProjectDir) {
-    lines.push("", `Generated project: ${plan.generatedProjectDir}`);
-    for (const file of plan.generatedFiles) lines.push(`  - ${file}`);
+  const titleText = "PHAROS ERC20 LAUNCH PLAN";
+  const title = args.noColor ? titleText : `${COLORS.bold}${COLORS.cyan}${titleText}${COLORS.reset}`;
+  const width = 78;
+  const lines = [boxLine("top", width), boxText(title, width), boxLine("mid", width)];
+  lines.push(boxText(`Generated  ${plan.generatedAt}`, width));
+  lines.push(boxText(`Mode       ${plan.mode}`, width));
+  lines.push(boxLine("mid", width));
+  lines.push(boxText(`Token      ${plan.token.name} (${plan.token.symbol})`, width));
+  lines.push(boxText(`Supply     ${plan.token.supplyInput} tokens`, width));
+  lines.push(boxText(`Base units ${compactMiddle(plan.token.initialSupplyBaseUnits, 42)}`, width));
+  lines.push(boxText(`Network    ${plan.network.name} | chain ${plan.network.chainId} | ${plan.network.nativeToken}`, width));
+  lines.push(boxText(`Owner      ${compactAddress(plan.addresses.owner || "deployer")}`, width));
+  lines.push(boxText(`Deployer   ${compactAddress(plan.addresses.deployer || "not provided")}`, width));
+  lines.push(boxText(`Backends   ${plan.backends.join(", ")}`, width));
+  lines.push(boxLine("mid", width));
+  lines.push(boxText("Checks", width));
+  for (const check of plan.checks) lines.push(boxText(`${color(check.status, `[${check.status}]`)} ${check.message}`, width));
+  lines.push(boxLine("mid", width));
+  lines.push(boxText("Estimate", width));
+  lines.push(boxText(`Gas price  ${plan.estimates.gasPriceWei || "fallback 10000000000"} wei`, width));
+  lines.push(boxText(`Gas limit  ${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}`, width));
+  lines.push(boxText(`Cost       ${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}`, width));
+  if (plan.estimates.deployerBalanceWei) {
+    lines.push(boxText(`Balance    ${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken}`, width));
   }
-  lines.push("", "Recommendations:");
-  for (const item of plan.recommendations) lines.push(`  - ${item}`);
-  lines.push("", "Launch planning is safe by default. Deployment requires explicit confirmation.");
+  if (plan.generatedProjectDir) {
+    lines.push(boxLine("mid", width));
+    lines.push(boxText(`Generated  ${path.basename(plan.generatedProjectDir)}`, width));
+    for (const file of plan.generatedFiles) lines.push(boxText(`- ${file}`, width));
+  }
+  lines.push(boxLine("mid", width));
+  lines.push(boxText("Recommendations", width));
+  for (const item of plan.recommendations) lines.push(boxText(`- ${item}`, width));
+  lines.push(boxLine("bottom", width));
+  lines.push("Launch planning is safe by default. Deployment requires explicit confirmation.");
   return `${lines.join("\n")}\n`;
+}
+
+function statusBadge(status) {
+  if (status === "OK") return "`OK`";
+  if (status === "WARN") return "`WARN`";
+  if (status === "FAIL") return "`FAIL`";
+  return `\`${status}\``;
+}
+
+function boxLine(type, width) {
+  const left = type === "top" ? "+" : type === "bottom" ? "+" : "+";
+  const right = "+";
+  return `${left}${"-".repeat(width - 2)}${right}`;
+}
+
+function boxText(text, width) {
+  const clean = stripAnsi(String(text));
+  const visibleLimit = width - 4;
+  if (clean.length <= visibleLimit) {
+    return `| ${text}${" ".repeat(visibleLimit - clean.length)} |`;
+  }
+  const rows = wrapVisible(text, visibleLimit);
+  return rows.map((row) => `| ${row}${" ".repeat(visibleLimit - stripAnsi(row).length)} |`).join("\n");
+}
+
+function wrapVisible(text, limit) {
+  const plain = stripAnsi(String(text));
+  const words = plain.split(/\s+/);
+  const rows = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) {
+      current = word.length > limit ? `${word.slice(0, limit - 1)}~` : word;
+    } else if (`${current} ${word}`.length <= limit) {
+      current = `${current} ${word}`;
+    } else {
+      rows.push(current);
+      current = word.length > limit ? `${word.slice(0, limit - 1)}~` : word;
+    }
+  }
+  if (current) rows.push(current);
+  return rows;
+}
+
+function stripAnsi(value) {
+  return String(value).replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function compactAddress(value) {
+  if (!ADDRESS_RE.test(String(value))) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function compactMiddle(value, maxLength) {
+  const text = String(value);
+  if (text.length <= maxLength) return text;
+  const head = Math.floor((maxLength - 3) / 2);
+  const tail = maxLength - 3 - head;
+  return `${text.slice(0, head)}...${text.slice(-tail)}`;
 }
 
 function formatUnits(value, decimals, maxFraction = 6) {
