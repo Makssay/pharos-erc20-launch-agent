@@ -611,6 +611,15 @@ async function addRpcChecks(plan, args, network) {
       addCheck(plan, "WARN", `Deployer balance check unavailable: ${error.message}`);
     }
   }
+
+  if (plan.liquidity?.router && ADDRESS_RE.test(plan.liquidity.router)) {
+    try {
+      const routerCode = await rpc(network.rpcUrl, "eth_getCode", [plan.liquidity.router, "latest"]);
+      addCheck(plan, routerCode && routerCode !== "0x" ? "OK" : "FAIL", routerCode && routerCode !== "0x" ? "FaroSwap router bytecode exists on the selected network." : "FaroSwap router address has no contract bytecode on the selected network.");
+    } catch (error) {
+      addCheck(plan, "WARN", `FaroSwap router bytecode check unavailable: ${error.message}`);
+    }
+  }
 }
 
 async function rpc(url, method, params) {
@@ -1247,6 +1256,11 @@ async function main() {
     throw new Error("Wrong chain: expected " + NETWORK.chainId + ", got " + connectedNetwork.chainId.toString());
   }
 
+  const routerCode = await provider.getCode(LIQUIDITY.router);
+  if (!routerCode || routerCode === "0x") {
+    throw new Error("FaroSwap router address has no contract code on " + NETWORK.name + ": " + LIQUIDITY.router);
+  }
+
   const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
   const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
   const router = new ethers.Contract(LIQUIDITY.router, ROUTER_ABI, wallet);
@@ -1257,6 +1271,9 @@ async function main() {
   const minToken = tokenAmount * (10000n - slippageBps) / 10000n;
   const minNative = nativeAmount * (10000n - slippageBps) / 10000n;
   const deadline = Math.floor(Date.now() / 1000) + Number(LIQUIDITY.deadlineMinutes) * 60;
+
+  const tokenCode = await provider.getCode(tokenAddress);
+  if (!tokenCode || tokenCode === "0x") throw new Error("Token address has no contract code: " + tokenAddress);
 
   const tokenBalance = await tokenContract.balanceOf(wallet.address);
   if (tokenBalance < tokenAmount) throw new Error("Wallet token balance is below planned liquidity token amount");
@@ -1525,7 +1542,7 @@ function runDeploy(args, network) {
   if (network.name === "mainnet" && !args.confirmMainnet) throw new Error("--deploy on mainnet requires --confirm-mainnet");
   if (!process.env.PRIVATE_KEY) throw new Error("--deploy requires PRIVATE_KEY in the local environment");
   if (!args.outputDir) throw new Error("--deploy requires --output-dir so the generated project location is explicit");
-  return args.deployBackend === "node" ? runNodeDeploy(args) : runFoundryDeploy(args, network);
+  return args.deployBackend === "node" ? runNodeDeploy(args, network) : runFoundryDeploy(args, network);
 }
 
 function runFoundryDeploy(args, network) {
@@ -1554,16 +1571,17 @@ function runFoundryDeploy(args, network) {
   };
 }
 
-function runNodeDeploy(args) {
+function runNodeDeploy(args, network) {
   const outputDir = path.resolve(args.outputDir);
   if (!fs.existsSync(path.join(outputDir, "deploy.mjs"))) throw new Error("Node deployer was not generated. Use --backend node or --backend both.");
   const npmRunner = resolveNpmRunner();
   if (!npmRunner) throw new Error("npm is not available in this shell");
+  const childEnv = { ...process.env, RPC_URL: network.rpcUrl };
   if (!fs.existsSync(path.join(outputDir, "node_modules"))) {
     const install = spawnSync(npmRunner.command, [...npmRunner.argsPrefix, "install", "--no-audit", "--no-fund"], {
       cwd: outputDir,
       encoding: "utf8",
-      env: process.env
+      env: childEnv
     });
     if (install.error || install.status !== 0) {
       return {
@@ -1575,7 +1593,7 @@ function runNodeDeploy(args) {
       };
     }
   }
-  const result = spawnSync(process.execPath, ["deploy.mjs"], { cwd: outputDir, encoding: "utf8", env: process.env });
+  const result = spawnSync(process.execPath, ["deploy.mjs"], { cwd: outputDir, encoding: "utf8", env: childEnv });
   return {
     status: result.status,
     stdout: redactSecret(result.stdout || "", process.env.PRIVATE_KEY),
