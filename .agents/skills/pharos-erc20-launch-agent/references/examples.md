@@ -80,6 +80,34 @@ $env:TOKEN_ADDRESS="0xDeployedTokenAddress"
 npm run add-liquidity
 ```
 
+## Generate Bitverse V4 Liquidity Files
+
+Bitverse is Pharos mainnet-only and uses Uniswap V4-style concentrated liquidity through PositionManager and Permit2.
+
+```powershell
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --deployer 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network mainnet --generate --backend node --generate-liquidity --liquidity-provider bitverse-v4 --liquidity-token-amount 100000 --liquidity-native-amount 0.5 --bitverse-tick-lower -887220 --bitverse-tick-upper 887220 --bitverse-position-liquidity 1000000000000000000 --output-dir .\demo-pharos-token-launch --install-project-scripts --confirm-mainnet
+```
+
+Generated Bitverse files:
+
+- `add-bitverse-liquidity.mjs`
+- `bitverse-v4-liquidity-plan.md`
+- `npm run add-liquidity` inside the generated launch folder
+- `npm run pharos:erc20:liquidity` from the project root when `--install-project-scripts` is used
+
+After token deployment:
+
+```powershell
+cd .\demo-pharos-token-launch
+npm install --no-audit --no-fund
+$env:PRIVATE_KEY="..."
+$env:TOKEN_ADDRESS="0xDeployedTokenAddress"
+$env:BITVERSE_TICK_LOWER="-887220"
+$env:BITVERSE_TICK_UPPER="887220"
+$env:BITVERSE_POSITION_LIQUIDITY="1000000000000000000"
+npm run add-liquidity
+```
+
 ## Optional Deployment
 
 Only run this after explicit confirmation from the user.

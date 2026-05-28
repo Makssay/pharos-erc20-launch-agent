@@ -20,7 +20,18 @@
       "chainId": 1672,
       "explorerUrl": "https://www.pharosscan.xyz/",
       "explorerApiUrl": "https://api.socialscan.io/pharos-mainnet",
-      "nativeToken": "PROS"
+      "nativeToken": "PROS",
+      "bitverse": {
+        "poolManager": "0xD681e96AD464f8F7F7fa7e1E0c5a367175E44550",
+        "permit2": "0xBE09AD809eE1f1c696a2EA2E9e2F07FAc4013a85",
+        "positionManager": "0x38CDC4049917A533dB44D9255dFd392b385e954C",
+        "positionDescriptor": "0x2ADD9e5Cf8a1d74C952Ce615834b11B3e11a6b04",
+        "quoter": "0xB54Be01aD8c75a392bD7a4cE276717D4b437Ff06",
+        "stateView": "0x616434e941c5E53d44894bF9ca13D517927BF8aF",
+        "universalRouter": "0x6965f9eFB3d24203A2967470720f1E314fE9E2a7",
+        "usdc": "0xc879c018db60520f4355c26ed1a6d572cdac1815",
+        "docs": "https://wiki.bitverse.zone/en/developers/6.amm-dex-integration.md"
+      }
     }
   ],
   "defaultNetwork": "atlantic-testnet"

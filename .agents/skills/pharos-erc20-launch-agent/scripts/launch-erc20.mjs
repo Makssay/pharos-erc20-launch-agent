@@ -11,6 +11,9 @@ const DEFAULT_DEPLOY_GAS = 1600000n;
 const DEFAULT_LIQUIDITY_GAS = 450000n;
 const DEFAULT_LIQUIDITY_SLIPPAGE_BPS = 100;
 const DEFAULT_LIQUIDITY_DEADLINE_MINUTES = 20;
+const DEFAULT_LIQUIDITY_PROVIDER = "faroswap-v2";
+const DEFAULT_BITVERSE_FEE = 3000;
+const DEFAULT_BITVERSE_TICK_SPACING = 60;
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -115,12 +118,19 @@ function parseArgs(argv) {
     forceProjectScripts: false,
     liquidityPlan: false,
     generateLiquidity: false,
+    liquidityProvider: null,
     liquidityRouter: null,
     liquidityTokenAmount: null,
     liquidityNativeAmount: null,
     liquidityRecipient: null,
     liquiditySlippageBps: String(DEFAULT_LIQUIDITY_SLIPPAGE_BPS),
     liquidityDeadlineMinutes: String(DEFAULT_LIQUIDITY_DEADLINE_MINUTES),
+    bitverseFee: String(DEFAULT_BITVERSE_FEE),
+    bitverseTickSpacing: String(DEFAULT_BITVERSE_TICK_SPACING),
+    bitverseHooks: ZERO_ADDRESS,
+    bitverseTickLower: null,
+    bitverseTickUpper: null,
+    bitversePositionLiquidity: null,
     tokenAddress: null,
     planOnly: false,
     help: false
@@ -198,10 +208,21 @@ function parseArgs(argv) {
       case "--faroswap-liquidity-plan":
         args.liquidityPlan = true;
         break;
+      case "--liquidity-provider":
+        args.liquidityProvider = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
       case "--generate-liquidity":
       case "--generate-faroswap-liquidity":
         args.generate = true;
         args.generateLiquidity = true;
+        break;
+      case "--generate-bitverse-liquidity":
+      case "--bitverse-liquidity":
+        args.generate = true;
+        args.generateLiquidity = true;
+        args.liquidityPlan = true;
+        args.liquidityProvider = "bitverse-v4";
         break;
       case "--liquidity-router":
       case "--faroswap-router":
@@ -228,6 +249,37 @@ function parseArgs(argv) {
         break;
       case "--liquidity-deadline-minutes":
         args.liquidityDeadlineMinutes = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--bitverse-fee":
+        args.bitverseFee = readValue(argv, ++i, arg);
+        args.liquidityProvider = "bitverse-v4";
+        args.liquidityPlan = true;
+        break;
+      case "--bitverse-tick-spacing":
+        args.bitverseTickSpacing = readValue(argv, ++i, arg);
+        args.liquidityProvider = "bitverse-v4";
+        args.liquidityPlan = true;
+        break;
+      case "--bitverse-hooks":
+        args.bitverseHooks = readValue(argv, ++i, arg);
+        args.liquidityProvider = "bitverse-v4";
+        args.liquidityPlan = true;
+        break;
+      case "--bitverse-tick-lower":
+        args.bitverseTickLower = readValue(argv, ++i, arg);
+        args.liquidityProvider = "bitverse-v4";
+        args.liquidityPlan = true;
+        break;
+      case "--bitverse-tick-upper":
+        args.bitverseTickUpper = readValue(argv, ++i, arg);
+        args.liquidityProvider = "bitverse-v4";
+        args.liquidityPlan = true;
+        break;
+      case "--bitverse-position-liquidity":
+      case "--position-liquidity":
+        args.bitversePositionLiquidity = readValue(argv, ++i, arg);
+        args.liquidityProvider = "bitverse-v4";
         args.liquidityPlan = true;
         break;
       case "--token-address":
@@ -334,13 +386,19 @@ Options:
   --deploy-backend <type>   foundry or node; default foundry
   --install-project-scripts Add npm scripts to the current project package.json
   --force-project-scripts   Allow overwriting an existing deploy script
-  --liquidity-plan          Add a FaroSwap liquidity plan
-  --generate-liquidity      Generate Node.js FaroSwap add-liquidity script
+  --liquidity-plan          Add a liquidity plan
+  --generate-liquidity      Generate Node.js add-liquidity script
+  --liquidity-provider      faroswap-v2 or bitverse-v4
   --liquidity-token-amount  Token amount to pair with native PHRS/PROS
   --liquidity-native-amount Native amount to pair with token
   --liquidity-router <addr> FaroSwap V2 router; default is known testnet router
   --liquidity-recipient     LP token recipient; defaults to owner/deployer
   --liquidity-slippage-bps  Slippage in basis points, default 100
+  --bitverse-fee            Bitverse V4 pool fee, default 3000
+  --bitverse-tick-spacing   Bitverse V4 tick spacing, default 60
+  --bitverse-tick-lower     Bitverse V4 lower tick
+  --bitverse-tick-upper     Bitverse V4 upper tick
+  --bitverse-position-liquidity Raw V4 position liquidity units
   --token-address <addr>    Existing deployed token address for liquidity
   --yes                     Required with --deploy
   --confirm-mainnet         Required with --deploy --network mainnet
@@ -351,6 +409,7 @@ Examples:
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch --install-project-scripts
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir demo-pharos-token-launch
+  node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network mainnet --generate --backend node --generate-liquidity --liquidity-provider bitverse-v4 --liquidity-token-amount 100000 --liquidity-native-amount 0.5 --bitverse-tick-lower -887220 --bitverse-tick-upper 887220 --bitverse-position-liquidity 1000000000000000000 --output-dir demo-pharos-token-launch
   node scripts/launch-erc20.mjs --output-dir demo-pharos-token-launch --deploy --deploy-backend node --yes
 `);
 }
@@ -384,12 +443,19 @@ function hydrateArgsFromLaunchConfig(args, config) {
   if (config.liquidity) {
     if (!args.liquidityPlan && !args.generateLiquidity) args.liquidityPlan = true;
     if (!args.generateLiquidity) args.generateLiquidity = true;
+    if (!args.liquidityProvider && config.liquidity.protocol) args.liquidityProvider = config.liquidity.protocol;
     if (!args.liquidityRouter && sameConfigNetwork && config.liquidity.router) args.liquidityRouter = config.liquidity.router;
     if (!args.liquidityTokenAmount && config.liquidity.tokenAmountInput) args.liquidityTokenAmount = config.liquidity.tokenAmountInput;
     if (!args.liquidityNativeAmount && config.liquidity.nativeAmountInput) args.liquidityNativeAmount = config.liquidity.nativeAmountInput;
     if (!args.liquidityRecipient && config.liquidity.recipient) args.liquidityRecipient = config.liquidity.recipient;
     if ((!args.liquiditySlippageBps || args.liquiditySlippageBps === String(DEFAULT_LIQUIDITY_SLIPPAGE_BPS)) && config.liquidity.slippageBps !== undefined) args.liquiditySlippageBps = String(config.liquidity.slippageBps);
     if ((!args.liquidityDeadlineMinutes || args.liquidityDeadlineMinutes === String(DEFAULT_LIQUIDITY_DEADLINE_MINUTES)) && config.liquidity.deadlineMinutes !== undefined) args.liquidityDeadlineMinutes = String(config.liquidity.deadlineMinutes);
+    if ((!args.bitverseFee || args.bitverseFee === String(DEFAULT_BITVERSE_FEE)) && config.liquidity.bitverse?.fee !== undefined) args.bitverseFee = String(config.liquidity.bitverse.fee);
+    if ((!args.bitverseTickSpacing || args.bitverseTickSpacing === String(DEFAULT_BITVERSE_TICK_SPACING)) && config.liquidity.bitverse?.tickSpacing !== undefined) args.bitverseTickSpacing = String(config.liquidity.bitverse.tickSpacing);
+    if ((!args.bitverseHooks || args.bitverseHooks === ZERO_ADDRESS) && config.liquidity.bitverse?.hooks) args.bitverseHooks = config.liquidity.bitverse.hooks;
+    if (!args.bitverseTickLower && config.liquidity.bitverse?.tickLower !== undefined && config.liquidity.bitverse.tickLower !== null) args.bitverseTickLower = String(config.liquidity.bitverse.tickLower);
+    if (!args.bitverseTickUpper && config.liquidity.bitverse?.tickUpper !== undefined && config.liquidity.bitverse.tickUpper !== null) args.bitverseTickUpper = String(config.liquidity.bitverse.tickUpper);
+    if (!args.bitversePositionLiquidity && config.liquidity.bitverse?.positionLiquidity) args.bitversePositionLiquidity = String(config.liquidity.bitverse.positionLiquidity);
   }
   if (Array.isArray(config.backends) && config.backends.length && !args.backend && !args.generateFoundry && !args.generateNode) {
     args.backends = config.backends.filter((backend) => backend === "foundry" || backend === "node");
@@ -474,16 +540,42 @@ function parseInteger(value, label, min, max) {
   return parsed;
 }
 
+function parseSignedInteger(value, label, min, max) {
+  if (!/^-?\d+$/.test(String(value))) throw new Error(`${label} must be an integer`);
+  const parsed = Number.parseInt(String(value), 10);
+  if (parsed < min || parsed > max) throw new Error(`${label} must be between ${min} and ${max}`);
+  return parsed;
+}
+
+function parsePositiveBigInt(value, label) {
+  const text = normalizeAmountString(value);
+  if (!/^\d+$/.test(text)) throw new Error(`${label} must be a positive integer`);
+  const parsed = BigInt(text);
+  if (parsed <= 0n) throw new Error(`${label} must be greater than zero`);
+  return parsed;
+}
+
 function buildLiquiditySpec(args, network, token) {
   const requested = args.liquidityPlan ||
     args.generateLiquidity ||
+    args.liquidityProvider ||
     args.liquidityRouter ||
     args.liquidityTokenAmount ||
     args.liquidityNativeAmount ||
     args.liquidityRecipient ||
+    args.bitverseTickLower ||
+    args.bitverseTickUpper ||
+    args.bitversePositionLiquidity ||
     args.tokenAddress;
   if (!requested) return null;
 
+  const provider = args.liquidityProvider || DEFAULT_LIQUIDITY_PROVIDER;
+  if (provider === "faroswap" || provider === "faroswap-v2") return buildFaroSwapLiquiditySpec(args, network, token);
+  if (provider === "bitverse" || provider === "bitverse-v4") return buildBitverseLiquiditySpec(args, network, token);
+  throw new Error("--liquidity-provider must be faroswap-v2 or bitverse-v4");
+}
+
+function buildFaroSwapLiquiditySpec(args, network, token) {
   const router = args.liquidityRouter || network.faroswap?.uniswapV2Router02 || null;
   const tokenAmountBaseUnits = args.liquidityTokenAmount ? parseDecimalUnits(args.liquidityTokenAmount, token.decimals, "--liquidity-token-amount").toString() : null;
   const nativeAmountWei = args.liquidityNativeAmount ? parseDecimalUnits(args.liquidityNativeAmount, 18, "--liquidity-native-amount").toString() : null;
@@ -509,6 +601,48 @@ function buildLiquiditySpec(args, network, token) {
   };
 }
 
+function buildBitverseLiquiditySpec(args, network, token) {
+  const tokenAmountBaseUnits = args.liquidityTokenAmount ? parseDecimalUnits(args.liquidityTokenAmount, token.decimals, "--liquidity-token-amount").toString() : null;
+  const nativeAmountWei = args.liquidityNativeAmount ? parseDecimalUnits(args.liquidityNativeAmount, 18, "--liquidity-native-amount").toString() : null;
+  const slippageBps = parseInteger(args.liquiditySlippageBps, "--liquidity-slippage-bps", 0, 5000);
+  const deadlineMinutes = parseInteger(args.liquidityDeadlineMinutes, "--liquidity-deadline-minutes", 1, 1440);
+  const recipient = args.liquidityRecipient || args.owner || args.deployer || null;
+  const bitverse = network.bitverse || {};
+  const fee = parseInteger(args.bitverseFee, "--bitverse-fee", 0, 16777215);
+  const tickSpacing = parseInteger(args.bitverseTickSpacing, "--bitverse-tick-spacing", 1, 887272);
+  const tickLower = args.bitverseTickLower !== null ? parseSignedInteger(args.bitverseTickLower, "--bitverse-tick-lower", -887272, 887272) : null;
+  const tickUpper = args.bitverseTickUpper !== null ? parseSignedInteger(args.bitverseTickUpper, "--bitverse-tick-upper", -887272, 887272) : null;
+  const positionLiquidity = args.bitversePositionLiquidity ? parsePositiveBigInt(args.bitversePositionLiquidity, "--bitverse-position-liquidity").toString() : null;
+
+  return {
+    protocol: "bitverse-v4",
+    pair: `${token.symbol}/${network.nativeToken}`,
+    tokenAddress: args.tokenAddress || null,
+    tokenAmountInput: args.liquidityTokenAmount || null,
+    tokenAmountBaseUnits,
+    nativeAmountInput: args.liquidityNativeAmount || null,
+    nativeAmountWei,
+    recipient,
+    slippageBps,
+    deadlineMinutes,
+    nativeToken: network.nativeToken,
+    docs: bitverse.docs || "https://wiki.bitverse.zone/en/developers/6.amm-dex-integration.md",
+    bitverse: {
+      poolManager: bitverse.poolManager || null,
+      permit2: bitverse.permit2 || null,
+      positionManager: bitverse.positionManager || null,
+      stateView: bitverse.stateView || null,
+      universalRouter: bitverse.universalRouter || null,
+      fee,
+      tickSpacing,
+      hooks: args.bitverseHooks || ZERO_ADDRESS,
+      tickLower,
+      tickUpper,
+      positionLiquidity
+    }
+  };
+}
+
 function createBasePlan(args, network, token) {
   return {
     generatedAt: new Date().toISOString(),
@@ -520,7 +654,8 @@ function createBasePlan(args, network, token) {
       explorerUrl: network.explorerUrl,
       explorerApiUrl: network.explorerApiUrl,
       nativeToken: network.nativeToken,
-      faroswap: network.faroswap || null
+      faroswap: network.faroswap || null,
+      bitverse: network.bitverse || null
     },
     token,
     tokenAddress: args.tokenAddress || null,
@@ -566,7 +701,15 @@ function addStaticChecks(plan, args, network, token) {
 
 function addLiquidityChecks(plan, args, network, token) {
   const liquidity = plan.liquidity;
-  addCheck(plan, "OK", `FaroSwap liquidity plan enabled for ${liquidity.pair}.`);
+  addCheck(plan, "OK", `${liquidityDisplayName(liquidity)} liquidity plan enabled for ${liquidity.pair}.`);
+  if (liquidity.protocol === "bitverse-v4") {
+    addBitverseLiquidityChecks(plan, args, network, token, liquidity);
+    return;
+  }
+  addFaroSwapLiquidityChecks(plan, args, network, token, liquidity);
+}
+
+function addFaroSwapLiquidityChecks(plan, args, network, token, liquidity) {
   if (liquidity.router) addCheck(plan, ADDRESS_RE.test(liquidity.router) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.router) ? `FaroSwap V2 router selected: ${compactAddress(liquidity.router)}.` : "Liquidity router is invalid. Expected 0x plus 40 hex characters.");
   else addCheck(plan, "FAIL", "No FaroSwap V2 router is known for this network. Pass --liquidity-router explicitly.");
   if (network.name !== "atlantic-testnet" && !args.liquidityRouter) addCheck(plan, "WARN", "FaroSwap default router is only configured for atlantic-testnet; mainnet requires an explicit reviewed router.");
@@ -580,6 +723,42 @@ function addLiquidityChecks(plan, args, network, token) {
   else addCheck(plan, "WARN", "No liquidity recipient provided; generated script will use the deployer wallet.");
   addCheck(plan, "OK", `Liquidity slippage set to ${liquidity.slippageBps} bps.`);
   if (args.generateLiquidity && !args.backends.includes("node")) addCheck(plan, "FAIL", "FaroSwap liquidity generation requires the Node.js backend.");
+}
+
+function addBitverseLiquidityChecks(plan, args, network, token, liquidity) {
+  const bitverse = liquidity.bitverse || {};
+  addCheck(plan, network.name === "mainnet" ? "OK" : "FAIL", "Bitverse V4 liquidity is configured for Pharos mainnet only.");
+  for (const [label, address] of [
+    ["PoolManager", bitverse.poolManager],
+    ["Permit2", bitverse.permit2],
+    ["PositionManager", bitverse.positionManager]
+  ]) {
+    addCheck(plan, address && ADDRESS_RE.test(address) ? "OK" : "FAIL", address && ADDRESS_RE.test(address) ? `Bitverse ${label} configured: ${compactAddress(address)}.` : `Bitverse ${label} address is missing or invalid for this network.`);
+  }
+  if (bitverse.hooks) addCheck(plan, ADDRESS_RE.test(bitverse.hooks) ? "OK" : "FAIL", ADDRESS_RE.test(bitverse.hooks) ? `Bitverse hooks address selected: ${compactAddress(bitverse.hooks)}.` : "Bitverse hooks address is invalid.");
+  if (liquidity.tokenAddress) addCheck(plan, ADDRESS_RE.test(liquidity.tokenAddress) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.tokenAddress) ? `Existing token address provided: ${compactAddress(liquidity.tokenAddress)}.` : "Token address is invalid. Expected 0x plus 40 hex characters.");
+  else addCheck(plan, "WARN", "No token address provided yet; add-bitverse-liquidity script will read TOKEN_ADDRESS or deployment-result.json after deployment.");
+  if (liquidity.tokenAmountBaseUnits) addCheck(plan, BigInt(liquidity.tokenAmountBaseUnits) <= BigInt(token.initialSupplyBaseUnits) ? "OK" : "FAIL", BigInt(liquidity.tokenAmountBaseUnits) <= BigInt(token.initialSupplyBaseUnits) ? `Bitverse token amount planned: ${liquidity.tokenAmountInput} ${token.symbol}.` : "Liquidity token amount is larger than initial supply.");
+  else addCheck(plan, "FAIL", "--liquidity-token-amount is required for Bitverse liquidity.");
+  if (liquidity.nativeAmountWei) addCheck(plan, "OK", `Bitverse native amount planned: ${liquidity.nativeAmountInput} ${network.nativeToken}.`);
+  else addCheck(plan, "FAIL", "--liquidity-native-amount is required for Bitverse native-token liquidity.");
+  if (liquidity.recipient) addCheck(plan, ADDRESS_RE.test(liquidity.recipient) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.recipient) ? `Position NFT recipient selected: ${compactAddress(liquidity.recipient)}.` : "Liquidity recipient is invalid. Expected 0x plus 40 hex characters.");
+  else addCheck(plan, "WARN", "No liquidity recipient provided; generated script will use the deployer wallet.");
+  addCheck(plan, "OK", `Bitverse V4 pool fee/tick spacing: ${bitverse.fee}/${bitverse.tickSpacing}.`);
+  if (bitverse.tickLower === null || bitverse.tickUpper === null) {
+    addCheck(plan, "WARN", "Bitverse tick range was not fully provided; set --bitverse-tick-lower and --bitverse-tick-upper before sending liquidity.");
+  } else if (bitverse.tickLower >= bitverse.tickUpper) {
+    addCheck(plan, "FAIL", "Bitverse tickLower must be lower than tickUpper.");
+  } else if (bitverse.tickLower % bitverse.tickSpacing !== 0 || bitverse.tickUpper % bitverse.tickSpacing !== 0) {
+    addCheck(plan, "FAIL", "Bitverse tickLower and tickUpper must be multiples of --bitverse-tick-spacing.");
+  } else {
+    addCheck(plan, "OK", `Bitverse tick range selected: ${bitverse.tickLower} to ${bitverse.tickUpper}.`);
+  }
+  if (bitverse.positionLiquidity) addCheck(plan, "OK", `Bitverse position liquidity units set: ${bitverse.positionLiquidity}.`);
+  else addCheck(plan, "WARN", "Bitverse position liquidity units are not set; pass --bitverse-position-liquidity or BITVERSE_POSITION_LIQUIDITY before execution.");
+  addCheck(plan, "OK", `Liquidity slippage set to ${liquidity.slippageBps} bps.`);
+  addCheck(plan, "OK", "Bitverse token/native amounts are treated as hard max spends by the generated script.");
+  if (args.generateLiquidity && !args.backends.includes("node")) addCheck(plan, "FAIL", "Bitverse liquidity generation requires the Node.js backend.");
 }
 
 async function addRpcChecks(plan, args, network) {
@@ -616,12 +795,28 @@ async function addRpcChecks(plan, args, network) {
     }
   }
 
-  if (plan.liquidity?.router && ADDRESS_RE.test(plan.liquidity.router)) {
+  if (plan.liquidity?.protocol === "faroswap-v2" && plan.liquidity.router && ADDRESS_RE.test(plan.liquidity.router)) {
     try {
       const routerCode = await rpc(network.rpcUrl, "eth_getCode", [plan.liquidity.router, "latest"]);
       addCheck(plan, routerCode && routerCode !== "0x" ? "OK" : "FAIL", routerCode && routerCode !== "0x" ? "FaroSwap router bytecode exists on the selected network." : "FaroSwap router address has no contract bytecode on the selected network.");
     } catch (error) {
       addCheck(plan, "WARN", `FaroSwap router bytecode check unavailable: ${error.message}`);
+    }
+  }
+  if (plan.liquidity?.protocol === "bitverse-v4") {
+    for (const [label, address] of [
+      ["Bitverse PoolManager", plan.liquidity.bitverse?.poolManager],
+      ["Bitverse Permit2", plan.liquidity.bitverse?.permit2],
+      ["Bitverse PositionManager", plan.liquidity.bitverse?.positionManager],
+      ["Bitverse StateView", plan.liquidity.bitverse?.stateView]
+    ]) {
+      if (!address || !ADDRESS_RE.test(address)) continue;
+      try {
+        const code = await rpc(network.rpcUrl, "eth_getCode", [address, "latest"]);
+        addCheck(plan, code && code !== "0x" ? "OK" : "FAIL", code && code !== "0x" ? `${label} bytecode exists on the selected network.` : `${label} address has no contract bytecode on the selected network.`);
+      } catch (error) {
+        addCheck(plan, "WARN", `${label} bytecode check unavailable: ${error.message}`);
+      }
     }
   }
 }
@@ -672,8 +867,9 @@ function addRecommendations(plan, args, token) {
   if (token.decimals > 18) plan.recommendations.push("Use 18 decimals or less unless there is a strong reason.");
   if (!args.generate && !args.deploy) plan.recommendations.push("Use --generate --output-dir <folder> to create reviewable launch files.");
   if (plan.liquidity) {
-    plan.recommendations.push("Review FaroSwap router address and liquidity amounts before adding liquidity.");
+    plan.recommendations.push(`Review ${liquidityDisplayName(plan.liquidity)} contract addresses and liquidity amounts before adding liquidity.`);
     plan.recommendations.push("Add liquidity only after the ERC20 deployment result and token balance are confirmed.");
+    if (plan.liquidity.protocol === "bitverse-v4") plan.recommendations.push("For Bitverse V4, choose a real tick range and position liquidity amount before signing; broad demo ranges can be capital-inefficient.");
   }
   if (plan.network.name === "mainnet") plan.recommendations.push("Run the same launch on atlantic-testnet before mainnet deployment.");
   plan.recommendations.push("Review generated Solidity and verification commands before deployment.");
@@ -706,18 +902,24 @@ function generateLaunchProject(outputDir, args, network, token) {
     files.push(writeFile(root, "foundry.toml", renderFoundryToml()));
   }
   if (args.backends.includes("node")) {
-    files.push(writeFile(root, "package.json", renderPackageJson(token, Boolean(args.generateLiquidity))));
+    const liquidity = args.generateLiquidity ? buildLiquiditySpec(args, network, token) : null;
+    files.push(writeFile(root, "package.json", renderPackageJson(token, Boolean(args.generateLiquidity), liquidity?.protocol)));
     files.push(writeFile(root, "deploy.mjs", renderNodeDeployer(network, token, ownerLiteral)));
     if (args.generateLiquidity) {
       if (!args.liquidityPlan) args.liquidityPlan = true;
-      const liquidity = buildLiquiditySpec(args, network, token);
-      files.push(writeFile(root, "add-liquidity.mjs", renderFaroSwapLiquidityScript(network, token, liquidity)));
-      files.push(writeFile(root, "faroswap-liquidity-plan.md", renderFaroSwapLiquidityPlan(network, token, liquidity)));
+      if (liquidity?.protocol === "bitverse-v4") {
+        files.push(writeFile(root, "add-bitverse-liquidity.mjs", renderBitverseLiquidityScript(network, token, liquidity)));
+        files.push(writeFile(root, "bitverse-v4-liquidity-plan.md", renderBitverseLiquidityPlan(network, token, liquidity)));
+      } else {
+        files.push(writeFile(root, "add-liquidity.mjs", renderFaroSwapLiquidityScript(network, token, liquidity)));
+        files.push(writeFile(root, "faroswap-liquidity-plan.md", renderFaroSwapLiquidityPlan(network, token, liquidity)));
+      }
     }
   }
 
-  files.push(writeFile(root, "README.md", renderGeneratedReadme(network, token, args.backends, Boolean(args.generateLiquidity))));
-  return { files, commands: buildCommands(network, args.backends, Boolean(args.generateLiquidity)) };
+  const liquidity = args.generateLiquidity ? buildLiquiditySpec(args, network, token) : null;
+  files.push(writeFile(root, "README.md", renderGeneratedReadme(network, token, args.backends, Boolean(args.generateLiquidity), liquidity?.protocol)));
+  return { files, commands: buildCommands(network, args.backends, Boolean(args.generateLiquidity), liquidity?.protocol) };
 }
 
 function writeFile(root, relativePath, content) {
@@ -982,12 +1184,12 @@ function buildLaunchConfig(args, network, token) {
     deployer: args.deployer || null,
     deployment: {
       deployBackend: args.deployBackend,
-      commands: buildCommands(network, args.backends, Boolean(args.generateLiquidity))
+      commands: buildCommands(network, args.backends, Boolean(args.generateLiquidity), liquidity?.protocol)
     }
   };
 }
 
-function buildCommands(network, backends = ["foundry", "node"], includeLiquidity = false) {
+function buildCommands(network, backends = ["foundry", "node"], includeLiquidity = false, liquidityProtocol = DEFAULT_LIQUIDITY_PROVIDER) {
   const commands = { powershell: [], bash: [] };
   if (backends.includes("foundry")) {
     commands.foundry = {
@@ -1024,6 +1226,7 @@ function buildCommands(network, backends = ["foundry", "node"], includeLiquidity
     commands.bash.push("# Node.js deployer", ...commands.node.bash);
   }
   if (includeLiquidity) {
+    const bitverse = liquidityProtocol === "bitverse-v4";
     commands.liquidity = {
       powershell: [
         "npm install --no-audit --no-fund",
@@ -1031,6 +1234,11 @@ function buildCommands(network, backends = ["foundry", "node"], includeLiquidity
         "# Optional if deployment-result.json is not present:",
         "$env:TOKEN_ADDRESS=\"0xDeployedTokenAddress\"",
         `$env:RPC_URL=\"${network.rpcUrl}\"`,
+        ...(bitverse ? [
+          "$env:BITVERSE_TICK_LOWER=\"-887220\"",
+          "$env:BITVERSE_TICK_UPPER=\"887220\"",
+          "$env:BITVERSE_POSITION_LIQUIDITY=\"1000000000000000000\""
+        ] : []),
         "npm run add-liquidity"
       ],
       bash: [
@@ -1039,23 +1247,35 @@ function buildCommands(network, backends = ["foundry", "node"], includeLiquidity
         "# Optional if deployment-result.json is not present:",
         "export TOKEN_ADDRESS=\"0xDeployedTokenAddress\"",
         `export RPC_URL=\"${network.rpcUrl}\"`,
+        ...(bitverse ? [
+          "export BITVERSE_TICK_LOWER=\"-887220\"",
+          "export BITVERSE_TICK_UPPER=\"887220\"",
+          "export BITVERSE_POSITION_LIQUIDITY=\"1000000000000000000\""
+        ] : []),
         "npm run add-liquidity"
       ]
     };
     if (commands.powershell.length) commands.powershell.push("");
     if (commands.bash.length) commands.bash.push("");
-    commands.powershell.push("# FaroSwap liquidity", ...commands.liquidity.powershell);
-    commands.bash.push("# FaroSwap liquidity", ...commands.liquidity.bash);
+    commands.powershell.push(`# ${bitverse ? "Bitverse V4" : "FaroSwap"} liquidity`, ...commands.liquidity.powershell);
+    commands.bash.push(`# ${bitverse ? "Bitverse V4" : "FaroSwap"} liquidity`, ...commands.liquidity.bash);
   }
   return commands;
 }
 
-function renderPackageJson(token, includeLiquidity = false) {
+function renderPackageJson(token, includeLiquidity = false, liquidityProtocol = DEFAULT_LIQUIDITY_PROVIDER) {
   const scripts = {
     "compile-check": "node deploy.mjs --compile-only",
     deploy: "node deploy.mjs"
   };
-  if (includeLiquidity) scripts["add-liquidity"] = "node add-liquidity.mjs";
+  if (includeLiquidity) {
+    if (liquidityProtocol === "bitverse-v4") {
+      scripts["add-bitverse-liquidity"] = "node add-bitverse-liquidity.mjs";
+      scripts["add-liquidity"] = "node add-bitverse-liquidity.mjs";
+    } else {
+      scripts["add-liquidity"] = "node add-liquidity.mjs";
+    }
+  }
   return `${JSON.stringify({
     name: npmPackageName(token),
     private: true,
@@ -1402,6 +1622,351 @@ npm run add-liquidity
 `;
 }
 
+function renderBitverseLiquidityScript(network, token, liquidity) {
+  const networkJson = JSON.stringify({
+    name: network.name,
+    chainId: network.chainId,
+    rpcUrl: network.rpcUrl,
+    explorerUrl: network.explorerUrl,
+    nativeToken: network.nativeToken
+  }, null, 2);
+  const tokenJson = JSON.stringify({
+    contractName: token.contractName,
+    symbol: token.symbol,
+    decimals: token.decimals
+  }, null, 2);
+  const liquidityJson = JSON.stringify(liquidity, null, 2);
+  return `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { ethers } from "ethers";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const NETWORK = ${networkJson};
+const TOKEN = ${tokenJson};
+const LIQUIDITY = ${liquidityJson};
+const BITVERSE = LIQUIDITY.bitverse || {};
+const ZERO_ADDRESS = "${ZERO_ADDRESS}";
+const MAX_UINT160 = (1n << 160n) - 1n;
+const MAX_UINT128 = (1n << 128n) - 1n;
+
+const ERC20_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)"
+];
+
+const PERMIT2_ABI = [
+  "function allowance(address owner,address token,address spender) view returns (uint160 amount,uint48 expiration,uint48 nonce)",
+  "function approve(address token,address spender,uint160 amount,uint48 expiration) external"
+];
+
+const POSITION_MANAGER_ABI = [
+  "function modifyLiquidities(bytes unlockData,uint256 deadline) payable"
+];
+
+main().catch((error) => {
+  console.error("Bitverse liquidity add failed:", explainError(error));
+  process.exit(1);
+});
+
+async function main() {
+  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment");
+  assertAddress(BITVERSE.poolManager, "Bitverse PoolManager");
+  assertAddress(BITVERSE.permit2, "Bitverse Permit2");
+  assertAddress(BITVERSE.positionManager, "Bitverse PositionManager");
+  assertAddress(BITVERSE.hooks || ZERO_ADDRESS, "Bitverse hooks");
+  if (!LIQUIDITY.tokenAmountBaseUnits) throw new Error("liquidity token amount is missing in launch-config.json");
+  if (!LIQUIDITY.nativeAmountWei) throw new Error("liquidity native amount is missing in launch-config.json");
+
+  const tokenAddress = resolveTokenAddress();
+  assertAddress(tokenAddress, "token address");
+
+  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || NETWORK.rpcUrl);
+  const connectedNetwork = await provider.getNetwork();
+  if (Number(connectedNetwork.chainId) !== NETWORK.chainId) {
+    throw new Error("Wrong chain: expected " + NETWORK.chainId + ", got " + connectedNetwork.chainId.toString());
+  }
+  if (NETWORK.name !== "mainnet") {
+    throw new Error("Bitverse V4 liquidity is configured for Pharos mainnet only");
+  }
+
+  await assertContractCode(provider, BITVERSE.poolManager, "Bitverse PoolManager");
+  await assertContractCode(provider, BITVERSE.permit2, "Bitverse Permit2");
+  await assertContractCode(provider, BITVERSE.positionManager, "Bitverse PositionManager");
+  await assertContractCode(provider, tokenAddress, "ERC20 token");
+
+  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
+  const permit2 = new ethers.Contract(BITVERSE.permit2, PERMIT2_ABI, wallet);
+  const positionManager = new ethers.Contract(BITVERSE.positionManager, POSITION_MANAGER_ABI, wallet);
+  const recipient = LIQUIDITY.recipient && ethers.isAddress(LIQUIDITY.recipient) ? LIQUIDITY.recipient : wallet.address;
+
+  const tokenAmount = BigInt(LIQUIDITY.tokenAmountBaseUnits);
+  const nativeAmount = BigInt(LIQUIDITY.nativeAmountWei);
+  const slippageBps = BigInt(LIQUIDITY.slippageBps);
+  const maxToken = tokenAmount;
+  const maxNative = nativeAmount;
+  const positionLiquidity = parseRequiredBigInt(process.env.BITVERSE_POSITION_LIQUIDITY || BITVERSE.positionLiquidity, "BITVERSE_POSITION_LIQUIDITY");
+  const tickLower = parseRequiredInt(process.env.BITVERSE_TICK_LOWER || BITVERSE.tickLower, "BITVERSE_TICK_LOWER");
+  const tickUpper = parseRequiredInt(process.env.BITVERSE_TICK_UPPER || BITVERSE.tickUpper, "BITVERSE_TICK_UPPER");
+  const tickSpacing = Number(BITVERSE.tickSpacing);
+  const fee = Number(BITVERSE.fee);
+
+  if (tickLower >= tickUpper) throw new Error("BITVERSE_TICK_LOWER must be lower than BITVERSE_TICK_UPPER");
+  if (tickLower % tickSpacing !== 0 || tickUpper % tickSpacing !== 0) {
+    throw new Error("Bitverse ticks must be multiples of tick spacing " + tickSpacing);
+  }
+
+  const nativeBalance = await provider.getBalance(wallet.address);
+  if (nativeBalance <= maxNative) throw new Error("Wallet native balance is not enough for liquidity plus gas");
+  const tokenBalance = await tokenContract.balanceOf(wallet.address);
+  if (tokenBalance < maxToken) throw new Error("Wallet token balance is below liquidity token max amount");
+
+  await ensureErc20Allowance(tokenContract, wallet.address, BITVERSE.permit2, maxToken);
+  await ensurePermit2Allowance(permit2, wallet.address, tokenAddress, BITVERSE.positionManager, maxToken);
+
+  const currencies = sortCurrencies(ZERO_ADDRESS, tokenAddress);
+  const tokenIsCurrency0 = sameAddress(currencies.currency0, tokenAddress);
+  const amount0Max = tokenIsCurrency0 ? maxToken : maxNative;
+  const amount1Max = tokenIsCurrency0 ? maxNative : maxToken;
+  if (amount0Max > MAX_UINT128 || amount1Max > MAX_UINT128) {
+    throw new Error("Bitverse amount max exceeds uint128; reduce liquidity amounts");
+  }
+
+  const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+  const actions = "0x020d14";
+  const paramBytes = [
+    abiCoder.encode(
+      ["address", "address", "uint24", "int24", "address", "int24", "int24", "uint256", "uint128", "uint128", "address", "bytes"],
+      [
+        currencies.currency0,
+        currencies.currency1,
+        fee,
+        tickSpacing,
+        BITVERSE.hooks || ZERO_ADDRESS,
+        tickLower,
+        tickUpper,
+        positionLiquidity,
+        amount0Max,
+        amount1Max,
+        recipient,
+        "0x"
+      ]
+    ),
+    abiCoder.encode(["address", "address"], [currencies.currency0, currencies.currency1]),
+    abiCoder.encode(["address", "address"], [ZERO_ADDRESS, recipient])
+  ];
+  const unlockData = abiCoder.encode(["bytes", "bytes[]"], [actions, paramBytes]);
+  const deadline = Math.floor(Date.now() / 1000) + Number(LIQUIDITY.deadlineMinutes) * 60;
+  const valueToPass = sameAddress(currencies.currency0, ZERO_ADDRESS) ? amount0Max : 0n;
+
+  const gasEstimate = await positionManager.modifyLiquidities.estimateGas(unlockData, deadline, { value: valueToPass });
+
+  console.log("Network:", NETWORK.name, NETWORK.chainId);
+  console.log("Token:", tokenAddress);
+  console.log("PositionManager:", BITVERSE.positionManager);
+  console.log("Permit2:", BITVERSE.permit2);
+  console.log("PoolKey:", JSON.stringify({
+    currency0: currencies.currency0,
+    currency1: currencies.currency1,
+    fee,
+    tickSpacing,
+    hooks: BITVERSE.hooks || ZERO_ADDRESS
+  }, null, 2));
+  console.log("Tick range:", tickLower, tickUpper);
+  console.log("Position liquidity:", positionLiquidity.toString());
+  console.log("Token max:", maxToken.toString());
+  console.log("Native max:", maxNative.toString());
+  console.log("Gas estimate:", gasEstimate.toString());
+
+  const tx = await positionManager.modifyLiquidities(unlockData, deadline, {
+    value: valueToPass,
+    gasLimit: gasEstimate * 120n / 100n
+  });
+  console.log("Bitverse liquidity tx:", tx.hash);
+  const receipt = await tx.wait();
+
+  const explorerBase = NETWORK.explorerUrl.replace(/\\/$/, "");
+  const report = {
+    generatedAt: new Date().toISOString(),
+    network: NETWORK,
+    token: TOKEN,
+    protocol: "bitverse-v4",
+    tokenAddress,
+    positionManager: BITVERSE.positionManager,
+    permit2: BITVERSE.permit2,
+    recipient,
+    poolKey: {
+      currency0: currencies.currency0,
+      currency1: currencies.currency1,
+      fee,
+      tickSpacing,
+      hooks: BITVERSE.hooks || ZERO_ADDRESS
+    },
+    tickLower,
+    tickUpper,
+    positionLiquidity: positionLiquidity.toString(),
+    tokenAmountMax: maxToken.toString(),
+    nativeAmountMax: maxNative.toString(),
+    slippageBps: Number(slippageBps),
+    transactionHash: tx.hash,
+    blockNumber: receipt?.blockNumber ?? null,
+    gasUsed: receipt?.gasUsed?.toString() ?? null,
+    explorerTxUrl: explorerBase + "/tx/" + tx.hash
+  };
+  fs.writeFileSync(path.join(__dirname, "liquidity-result.json"), JSON.stringify(report, bigintJsonReplacer, 2) + "\\n", "utf8");
+  console.log("Explorer:", report.explorerTxUrl);
+  console.log("Saved: liquidity-result.json");
+}
+
+async function ensureErc20Allowance(tokenContract, owner, spender, amount) {
+  const allowance = await tokenContract.allowance(owner, spender);
+  if (allowance >= amount) return;
+  console.log("Approving ERC20 token to Permit2...");
+  const tx = await tokenContract.approve(spender, amount);
+  console.log("ERC20 approve tx:", tx.hash);
+  await tx.wait();
+}
+
+async function ensurePermit2Allowance(permit2, owner, tokenAddress, spender, amount) {
+  const allowance = await permit2.allowance(owner, tokenAddress, spender);
+  const current = BigInt(allowance[0]);
+  const expiration = Number(allowance[1]);
+  const minExpiration = Math.floor(Date.now() / 1000) + 3600;
+  if (current >= amount && expiration > minExpiration) return;
+  console.log("Approving PositionManager through Permit2...");
+  const approveAmount = amount > MAX_UINT160 ? MAX_UINT160 : amount;
+  const approveExpiration = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+  const tx = await permit2.approve(tokenAddress, spender, approveAmount, approveExpiration);
+  console.log("Permit2 approve tx:", tx.hash);
+  await tx.wait();
+}
+
+function resolveTokenAddress() {
+  if (process.env.TOKEN_ADDRESS) return process.env.TOKEN_ADDRESS;
+  const deploymentPath = path.join(__dirname, "deployment-result.json");
+  if (fs.existsSync(deploymentPath)) {
+    const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
+    if (deployment.contractAddress) return deployment.contractAddress;
+  }
+  if (LIQUIDITY.tokenAddress) return LIQUIDITY.tokenAddress;
+  throw new Error("Set TOKEN_ADDRESS or run token deployment first so deployment-result.json exists");
+}
+
+async function assertContractCode(provider, address, label) {
+  const code = await provider.getCode(address);
+  if (!code || code === "0x") throw new Error(label + " has no contract code: " + address);
+}
+
+function assertAddress(address, label) {
+  if (!address || !ethers.isAddress(address)) throw new Error("Valid " + label + " address is required");
+}
+
+function parseRequiredBigInt(value, label) {
+  if (value === null || value === undefined || value === "") throw new Error(label + " is required");
+  if (!/^\\d+$/.test(String(value))) throw new Error(label + " must be a positive integer");
+  const parsed = BigInt(value);
+  if (parsed <= 0n) throw new Error(label + " must be greater than zero");
+  return parsed;
+}
+
+function parseRequiredInt(value, label) {
+  if (value === null || value === undefined || value === "") throw new Error(label + " is required");
+  if (!/^-?\\d+$/.test(String(value))) throw new Error(label + " must be an integer");
+  return Number.parseInt(String(value), 10);
+}
+
+function sortCurrencies(nativeCurrency, tokenAddress) {
+  const token = ethers.getAddress(tokenAddress);
+  const native = ethers.getAddress(nativeCurrency);
+  return BigInt(native) < BigInt(token)
+    ? { currency0: native, currency1: token }
+    : { currency0: token, currency1: native };
+}
+
+function sameAddress(a, b) {
+  return ethers.getAddress(a) === ethers.getAddress(b);
+}
+
+function explainError(error) {
+  const message = error?.shortMessage || error?.reason || error?.message || String(error);
+  if (/revert|execution reverted|call exception/i.test(message)) {
+    return message + " | If this pool is not initialized yet, initialize the Bitverse V4 pool first or use an existing pool/tick range.";
+  }
+  return message;
+}
+
+function bigintJsonReplacer(_key, value) {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+`;
+}
+
+function renderBitverseLiquidityPlan(network, token, liquidity) {
+  const bitverse = liquidity.bitverse || {};
+  return `# Bitverse V4 Liquidity Plan
+
+Protocol: Bitverse AMM, Uniswap V4-style concentrated liquidity
+Network: ${network.name}
+Pair: ${liquidity.pair}
+Docs: ${liquidity.docs}
+
+## Contracts
+
+- PoolManager: ${bitverse.poolManager || "missing"}
+- Permit2: ${bitverse.permit2 || "missing"}
+- PositionManager: ${bitverse.positionManager || "missing"}
+- StateView: ${bitverse.stateView || "missing"}
+
+## Pool Key
+
+- currency0/currency1: derived at runtime from native ${network.nativeToken} address zero and deployed token address
+- Fee: ${bitverse.fee}
+- Tick spacing: ${bitverse.tickSpacing}
+- Hooks: ${bitverse.hooks || ZERO_ADDRESS}
+- Tick lower: ${bitverse.tickLower ?? "set BITVERSE_TICK_LOWER before execution"}
+- Tick upper: ${bitverse.tickUpper ?? "set BITVERSE_TICK_UPPER before execution"}
+- Position liquidity units: ${bitverse.positionLiquidity || "set BITVERSE_POSITION_LIQUIDITY before execution"}
+
+## Amounts
+
+- Token amount: ${liquidity.tokenAmountInput || "missing"} ${token.symbol}
+- Token base units: ${liquidity.tokenAmountBaseUnits || "missing"}
+- Native amount: ${liquidity.nativeAmountInput || "missing"} ${network.nativeToken}
+- Native wei: ${liquidity.nativeAmountWei || "missing"}
+- Slippage setting: ${liquidity.slippageBps} bps
+- Token/native amounts are hard max spends in the generated Bitverse script.
+- Position NFT recipient: ${liquidity.recipient || "deployer wallet"}
+
+## Usage
+
+After ERC20 deployment, either keep \`deployment-result.json\` in this folder or set \`TOKEN_ADDRESS\`.
+
+\`\`\`powershell
+npm install --no-audit --no-fund
+$env:PRIVATE_KEY="paste_private_key_here"
+$env:TOKEN_ADDRESS="0xDeployedTokenAddress"
+$env:BITVERSE_TICK_LOWER="-887220"
+$env:BITVERSE_TICK_UPPER="887220"
+$env:BITVERSE_POSITION_LIQUIDITY="1000000000000000000"
+npm run add-liquidity
+\`\`\`
+
+## Safety
+
+- Bitverse V4 positions are ERC-721 concentrated-liquidity NFTs, not V2 LP tokens.
+- Broad demo ranges are easier to understand but can be inefficient.
+- Confirm PositionManager, Permit2, token address, tick range, amount limits, and recipient before signing.
+- If the pool is not initialized, the transaction can revert during gas estimation.
+- Adding liquidity is a real write operation and can expose you to price movement and impermanent loss.
+- Never commit \`.env\`, private keys, \`deployment-result.json\`, or \`liquidity-result.json\`.
+`;
+}
+
 function renderVerificationChecklist(network, token, ownerLiteral) {
   const constructorArgs = `$(cast abi-encode "constructor(string,string,uint8,uint256,address)" "${escapeShell(token.name)}" "${escapeShell(token.symbol)}" ${token.decimals} ${token.initialSupplyBaseUnits} ${ownerLiteral})`;
   return `# Verification Checklist
@@ -1441,8 +2006,8 @@ Checklist:
 `;
 }
 
-function renderGeneratedReadme(network, token, backends = ["foundry", "node"], includeLiquidity = false) {
-  const commands = buildCommands(network, backends, includeLiquidity);
+function renderGeneratedReadme(network, token, backends = ["foundry", "node"], includeLiquidity = false, liquidityProtocol = DEFAULT_LIQUIDITY_PROVIDER) {
+  const commands = buildCommands(network, backends, includeLiquidity, liquidityProtocol);
   const sections = [];
   sections.push(`# ${token.name} ERC20 Launch Project
 
@@ -1497,9 +2062,10 @@ npm run compile-check
 `);
   }
   if (includeLiquidity && commands.liquidity) {
-    sections.push(`## Add Liquidity On FaroSwap
+    const bitverse = liquidityProtocol === "bitverse-v4";
+    sections.push(`## Add Liquidity On ${bitverse ? "Bitverse V4" : "FaroSwap"}
 
-The generated \`add-liquidity.mjs\` script creates a FaroSwap V2-style ${token.symbol}/${network.nativeToken} liquidity position. It reads \`deployment-result.json\` after token deployment or uses \`TOKEN_ADDRESS\` from the environment.
+The generated \`${bitverse ? "add-bitverse-liquidity.mjs" : "add-liquidity.mjs"}\` script creates a ${bitverse ? "Bitverse V4 concentrated-liquidity" : "FaroSwap V2-style"} ${token.symbol}/${network.nativeToken} liquidity position. It reads \`deployment-result.json\` after token deployment or uses \`TOKEN_ADDRESS\` from the environment.
 
 PowerShell:
 
@@ -1507,7 +2073,7 @@ PowerShell:
 ${commands.liquidity.powershell.join("\n")}
 \`\`\`
 
-Review \`faroswap-liquidity-plan.md\` before signing.
+Review \`${bitverse ? "bitverse-v4-liquidity-plan.md" : "faroswap-liquidity-plan.md"}\` before signing.
 `);
   }
 
@@ -1673,9 +2239,18 @@ function renderMarkdown(plan) {
   lines.push(`- Human supply: \`${plan.token.supplyInput}\``);
   lines.push(`- Base-unit supply: \`${plan.token.initialSupplyBaseUnits}\``, "");
   if (plan.liquidity) {
-    lines.push("## FaroSwap Liquidity", "");
+    lines.push(`## ${liquidityDisplayName(plan.liquidity)} Liquidity`, "");
     lines.push(`- Pair: \`${plan.liquidity.pair}\``);
-    lines.push(`- Router: \`${plan.liquidity.router || "missing"}\``);
+    if (plan.liquidity.protocol === "bitverse-v4") {
+      lines.push(`- PositionManager: \`${plan.liquidity.bitverse?.positionManager || "missing"}\``);
+      lines.push(`- Permit2: \`${plan.liquidity.bitverse?.permit2 || "missing"}\``);
+      lines.push(`- PoolManager: \`${plan.liquidity.bitverse?.poolManager || "missing"}\``);
+      lines.push(`- Fee / tick spacing: \`${plan.liquidity.bitverse?.fee}/${plan.liquidity.bitverse?.tickSpacing}\``);
+      lines.push(`- Tick range: \`${plan.liquidity.bitverse?.tickLower ?? "env required"} to ${plan.liquidity.bitverse?.tickUpper ?? "env required"}\``);
+      lines.push(`- Position liquidity: \`${plan.liquidity.bitverse?.positionLiquidity || "env required"}\``);
+    } else {
+      lines.push(`- Router: \`${plan.liquidity.router || "missing"}\``);
+    }
     lines.push(`- Token amount: \`${plan.liquidity.tokenAmountInput || "missing"} ${plan.token.symbol}\``);
     lines.push(`- Native amount: \`${plan.liquidity.nativeAmountInput || "missing"} ${plan.network.nativeToken}\``);
     lines.push(`- LP recipient: \`${plan.liquidity.recipient || "deployer wallet"}\``);
@@ -1742,9 +2317,16 @@ function renderConsole(plan, args) {
   lines.push(boxText(`Backends   ${plan.backends.join(", ")}`, width));
   if (plan.liquidity) {
     lines.push(boxLine("mid", width));
-    lines.push(boxText("FaroSwap liquidity", width));
+    lines.push(boxText(`${liquidityDisplayName(plan.liquidity)} liquidity`, width));
     lines.push(boxText(`Pair       ${plan.liquidity.pair}`, width));
-    lines.push(boxText(`Router     ${compactAddress(plan.liquidity.router || "missing")}`, width));
+    if (plan.liquidity.protocol === "bitverse-v4") {
+      lines.push(boxText(`Position  ${compactAddress(plan.liquidity.bitverse?.positionManager || "missing")}`, width));
+      lines.push(boxText(`Permit2   ${compactAddress(plan.liquidity.bitverse?.permit2 || "missing")}`, width));
+      lines.push(boxText(`Fee/ticks ${plan.liquidity.bitverse?.fee}/${plan.liquidity.bitverse?.tickSpacing}`, width));
+      lines.push(boxText(`Range     ${plan.liquidity.bitverse?.tickLower ?? "env"} to ${plan.liquidity.bitverse?.tickUpper ?? "env"}`, width));
+    } else {
+      lines.push(boxText(`Router     ${compactAddress(plan.liquidity.router || "missing")}`, width));
+    }
     lines.push(boxText(`Token amt  ${plan.liquidity.tokenAmountInput || "missing"} ${plan.token.symbol}`, width));
     lines.push(boxText(`Native amt ${plan.liquidity.nativeAmountInput || "missing"} ${plan.network.nativeToken}`, width));
     lines.push(boxText(`Recipient  ${compactAddress(plan.liquidity.recipient || "deployer wallet")}`, width));
@@ -1786,6 +2368,11 @@ function statusBadge(status) {
   if (status === "WARN") return "`WARN`";
   if (status === "FAIL") return "`FAIL`";
   return `\`${status}\``;
+}
+
+function liquidityDisplayName(liquidity) {
+  if (liquidity?.protocol === "bitverse-v4") return "Bitverse V4";
+  return "FaroSwap";
 }
 
 function boxLine(type, width) {
