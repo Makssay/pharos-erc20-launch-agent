@@ -367,6 +367,10 @@ function loadExistingLaunchConfig(outputDir) {
 }
 
 function hydrateArgsFromLaunchConfig(args, config) {
+  const requestedNetwork = args.network || null;
+  const configNetwork = config.network?.name || null;
+  const sameConfigNetwork = !requestedNetwork || !configNetwork || requestedNetwork === configNetwork;
+
   if (!args.name && config.token?.name) args.name = config.token.name;
   if (!args.symbol && config.token?.symbol) args.symbol = config.token.symbol;
   if (!args.supply && config.token?.supplyInput) args.supply = config.token.supplyInput;
@@ -375,12 +379,12 @@ function hydrateArgsFromLaunchConfig(args, config) {
   if (!args.owner && config.owner && config.owner !== "deployer") args.owner = config.owner;
   if (!args.deployer && config.deployer) args.deployer = config.deployer;
   if (!args.network && config.network?.name) args.network = config.network.name;
-  if (!args.rpcUrl && config.network?.rpcUrl) args.rpcUrl = config.network.rpcUrl;
-  if (!args.tokenAddress && config.tokenAddress) args.tokenAddress = config.tokenAddress;
+  if (!args.rpcUrl && sameConfigNetwork && config.network?.rpcUrl) args.rpcUrl = config.network.rpcUrl;
+  if (!args.tokenAddress && sameConfigNetwork && config.tokenAddress) args.tokenAddress = config.tokenAddress;
   if (config.liquidity) {
     if (!args.liquidityPlan && !args.generateLiquidity) args.liquidityPlan = true;
     if (!args.generateLiquidity) args.generateLiquidity = true;
-    if (!args.liquidityRouter && config.liquidity.router) args.liquidityRouter = config.liquidity.router;
+    if (!args.liquidityRouter && sameConfigNetwork && config.liquidity.router) args.liquidityRouter = config.liquidity.router;
     if (!args.liquidityTokenAmount && config.liquidity.tokenAmountInput) args.liquidityTokenAmount = config.liquidity.tokenAmountInput;
     if (!args.liquidityNativeAmount && config.liquidity.nativeAmountInput) args.liquidityNativeAmount = config.liquidity.nativeAmountInput;
     if (!args.liquidityRecipient && config.liquidity.recipient) args.liquidityRecipient = config.liquidity.recipient;
