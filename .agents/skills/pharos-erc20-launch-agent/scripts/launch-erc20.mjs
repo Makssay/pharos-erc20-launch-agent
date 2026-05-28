@@ -32,6 +32,11 @@ async function main() {
     return;
   }
 
+  const existingLaunchConfig = loadExistingLaunchConfig(args.outputDir);
+  if (existingLaunchConfig) {
+    hydrateArgsFromLaunchConfig(args, existingLaunchConfig);
+  }
+
   const networkConfig = loadNetworkConfig();
   const network = resolveNetwork(networkConfig, args.network);
   if (args.rpcUrl) network.rpcUrl = args.rpcUrl;
@@ -56,6 +61,11 @@ async function main() {
     plan.generatedProjectDir = path.resolve(outputDir);
     plan.commands = generated.commands;
     addCheck(plan, "OK", `Generated launch project: ${path.basename(path.resolve(outputDir))}.`);
+    if (args.installProjectScripts) {
+      const projectScripts = installProjectScripts(outputDir, args, network);
+      plan.projectScripts = projectScripts;
+      addCheck(plan, projectScripts.deployScriptInstalled ? "OK" : "WARN", projectScripts.message);
+    }
     fs.writeFileSync(path.join(plan.generatedProjectDir, "launch-plan.md"), renderMarkdown(plan), "utf8");
     if (!plan.generatedFiles.includes("launch-plan.md")) plan.generatedFiles.push("launch-plan.md");
   }
@@ -97,6 +107,9 @@ function parseArgs(argv) {
     generateFoundry: false,
     generateNode: false,
     deployBackend: null,
+    deployBackendExplicit: false,
+    installProjectScripts: false,
+    forceProjectScripts: false,
     planOnly: false,
     help: false
   };
@@ -159,6 +172,15 @@ function parseArgs(argv) {
         break;
       case "--deploy-backend":
         args.deployBackend = readValue(argv, ++i, arg);
+        args.deployBackendExplicit = true;
+        break;
+      case "--install-project-scripts":
+      case "--install-npm-scripts":
+        args.installProjectScripts = true;
+        break;
+      case "--force-project-scripts":
+        args.installProjectScripts = true;
+        args.forceProjectScripts = true;
         break;
       case "--generate":
         args.generate = true;
@@ -257,6 +279,8 @@ Options:
   --offline, --skip-rpc     Skip live RPC checks
   --deploy                  Execute generated deployment script
   --deploy-backend <type>   foundry or node; default foundry
+  --install-project-scripts Add npm scripts to the current project package.json
+  --force-project-scripts   Allow overwriting an existing deploy script
   --yes                     Required with --deploy
   --confirm-mainnet         Required with --deploy --network mainnet
   --no-color                Disable console colors
@@ -264,7 +288,42 @@ Options:
 Examples:
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch
+  node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch --install-project-scripts
+  node scripts/launch-erc20.mjs --output-dir demo-pharos-token-launch --deploy --deploy-backend node --yes
 `);
+}
+
+function loadExistingLaunchConfig(outputDir) {
+  if (!outputDir) return null;
+  const configPath = path.join(path.resolve(outputDir), "launch-config.json");
+  if (!fs.existsSync(configPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read existing launch-config.json: ${error.message}`);
+  }
+}
+
+function hydrateArgsFromLaunchConfig(args, config) {
+  if (!args.name && config.token?.name) args.name = config.token.name;
+  if (!args.symbol && config.token?.symbol) args.symbol = config.token.symbol;
+  if (!args.supply && config.token?.supplyInput) args.supply = config.token.supplyInput;
+  if ((!args.decimals || args.decimals === "18") && config.token?.decimals !== undefined) args.decimals = String(config.token.decimals);
+  if ((!args.contractName || args.contractName === "PharosLaunchToken") && config.token?.contractName) args.contractName = config.token.contractName;
+  if (!args.owner && config.owner && config.owner !== "deployer") args.owner = config.owner;
+  if (!args.deployer && config.deployer) args.deployer = config.deployer;
+  if (!args.network && config.network?.name) args.network = config.network.name;
+  if (!args.rpcUrl && config.network?.rpcUrl) args.rpcUrl = config.network.rpcUrl;
+  if (Array.isArray(config.backends) && config.backends.length && !args.backend && !args.generateFoundry && !args.generateNode) {
+    args.backends = config.backends.filter((backend) => backend === "foundry" || backend === "node");
+  }
+  if (!args.deployBackendExplicit && config.deployment?.deployBackend) {
+    args.deployBackend = config.deployment.deployBackend;
+  }
+  if (!args.deployBackendExplicit) {
+    args.deployBackend = args.backends.length === 1 ? args.backends[0] : "foundry";
+  }
+  if (args.deploy && !args.backends.includes(args.deployBackend)) args.backends.push(args.deployBackend);
 }
 
 function loadNetworkConfig() {
@@ -495,6 +554,88 @@ function writeFile(root, relativePath, content) {
   fs.mkdirSync(path.dirname(fullPath), { recursive: true });
   fs.writeFileSync(fullPath, content, "utf8");
   return relativePath;
+}
+
+function installProjectScripts(outputDir, args, network) {
+  const projectRoot = process.cwd();
+  const packagePath = path.join(projectRoot, "package.json");
+  const existed = fs.existsSync(packagePath);
+  let pkg;
+  if (existed) {
+    try {
+      pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+    } catch (error) {
+      throw new Error(`Could not read project package.json: ${error.message}`);
+    }
+  } else {
+    pkg = {
+      name: npmSafeName(path.basename(projectRoot) || "pharos-erc20-project"),
+      private: true,
+      scripts: {}
+    };
+  }
+
+  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) throw new Error("Project package.json must contain a JSON object");
+  if (!pkg.scripts || typeof pkg.scripts !== "object" || Array.isArray(pkg.scripts)) pkg.scripts = {};
+
+  const skillScript = projectRelativeScriptPath(projectRoot);
+  const launchDir = projectRelativePath(projectRoot, path.resolve(outputDir));
+  const baseCommand = `node ${quoteNpmArg(skillScript)} --output-dir ${quoteNpmArg(launchDir)}`;
+  const mainnetFlag = network.name === "mainnet" ? " --confirm-mainnet" : "";
+  const deployCommand = `${baseCommand} --deploy --deploy-backend node --yes${mainnetFlag}`;
+
+  pkg.scripts["pharos:erc20:plan"] = `${baseCommand} --format console`;
+  pkg.scripts["pharos:erc20:deploy"] = deployCommand;
+
+  const existingDeploy = pkg.scripts.deploy;
+  const deployOwnedBySkill = typeof existingDeploy === "string" && existingDeploy.includes("pharos:erc20:deploy");
+  let deployScriptInstalled = false;
+  if (!existingDeploy || deployOwnedBySkill || args.forceProjectScripts) {
+    pkg.scripts.deploy = "npm run pharos:erc20:deploy";
+    deployScriptInstalled = true;
+  }
+
+  fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+  return {
+    packageJson: packagePath,
+    launchDir,
+    scripts: {
+      "pharos:erc20:plan": pkg.scripts["pharos:erc20:plan"],
+      "pharos:erc20:deploy": pkg.scripts["pharos:erc20:deploy"],
+      deploy: deployScriptInstalled ? pkg.scripts.deploy : existingDeploy
+    },
+    deployScriptInstalled,
+    message: deployScriptInstalled
+      ? "Installed project npm scripts: npm run deploy and npm run pharos:erc20:deploy."
+      : "Installed pharos npm scripts, but kept existing deploy script. Use npm run pharos:erc20:deploy or pass --force-project-scripts."
+  };
+}
+
+function projectRelativeScriptPath(projectRoot) {
+  const installedSkillScript = path.join(projectRoot, ".agents", "skills", "pharos-erc20-launch-agent", "scripts", "launch-erc20.mjs");
+  if (fs.existsSync(installedSkillScript)) return projectRelativePath(projectRoot, installedSkillScript);
+  return projectRelativePath(projectRoot, fileURLToPath(import.meta.url));
+}
+
+function projectRelativePath(projectRoot, targetPath) {
+  const relative = path.relative(projectRoot, targetPath);
+  if (!relative) return ".";
+  const withDot = relative.startsWith("..") ? relative : `.${path.sep}${relative}`;
+  return toNpmPath(withDot);
+}
+
+function quoteNpmArg(value) {
+  const text = toNpmPath(value);
+  return /[\s"]/u.test(text) ? JSON.stringify(text) : text;
+}
+
+function toNpmPath(value) {
+  return String(value).replace(/\\/g, "/");
+}
+
+function npmSafeName(value) {
+  const cleaned = String(value).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || "pharos-erc20-project";
 }
 
 function renderTokenContract(contractName) {
@@ -951,6 +1092,26 @@ npm run compile-check
 \`\`\`
 `);
   }
+
+  sections.push(`## Managed Deploy From Skill Project
+
+You can also deploy from the project where the skill is installed. The skill reads this folder's \`launch-config.json\` and runs the selected backend inside the generated launch folder.
+
+PowerShell:
+
+\`\`\`powershell
+$env:PRIVATE_KEY="paste_private_key_here"
+node .\\.agents\\skills\\pharos-erc20-launch-agent\\scripts\\launch-erc20.mjs --output-dir "<path_to_this_launch_folder>" --deploy --deploy-backend node --yes
+\`\`\`
+
+If the launch project was generated with \`--install-project-scripts\`, run from the project root instead:
+
+\`\`\`powershell
+$env:PRIVATE_KEY="paste_private_key_here"
+npm run deploy
+\`\`\`
+`);
+
   sections.push(`## Verify
 
 See \`verification-checklist.md\`.
@@ -999,10 +1160,25 @@ function runFoundryDeploy(args, network) {
 function runNodeDeploy(args) {
   const outputDir = path.resolve(args.outputDir);
   if (!fs.existsSync(path.join(outputDir, "deploy.mjs"))) throw new Error("Node deployer was not generated. Use --backend node or --backend both.");
-  if (!fs.existsSync(path.join(outputDir, "node_modules"))) throw new Error("Node dependencies are not installed. Run npm install inside the generated launch project first.");
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
   const npmCheck = spawnSync(npmCommand, ["--version"], { encoding: "utf8" });
   if (npmCheck.error || npmCheck.status !== 0) throw new Error("npm is not available in this shell");
+  if (!fs.existsSync(path.join(outputDir, "node_modules"))) {
+    const install = spawnSync(npmCommand, ["install", "--no-audit", "--no-fund"], {
+      cwd: outputDir,
+      encoding: "utf8",
+      env: process.env
+    });
+    if (install.error || install.status !== 0) {
+      return {
+        status: install.status ?? 1,
+        stdout: install.stdout || "",
+        stderr: install.stderr || "",
+        error: install.error ? install.error.message : "npm install failed",
+        command: "npm install --no-audit --no-fund"
+      };
+    }
+  }
   const result = spawnSync(npmCommand, ["run", "deploy"], { cwd: outputDir, encoding: "utf8", env: process.env });
   return {
     status: result.status,
@@ -1054,6 +1230,13 @@ function renderMarkdown(plan) {
   if (plan.generatedProjectDir) {
     lines.push("", "## Generated Project", "", "Directory: current launch project folder", "");
     for (const file of plan.generatedFiles) lines.push(`- \`${file}\``);
+  }
+  if (plan.projectScripts) {
+    lines.push("", "## Project NPM Scripts", "");
+    lines.push(`- Package file: \`${path.basename(plan.projectScripts.packageJson)}\``);
+    lines.push(`- Launch folder: \`${plan.projectScripts.launchDir}\``);
+    lines.push("- Plan from project root: `npm run pharos:erc20:plan`");
+    lines.push(`- Deploy from project root: \`${plan.projectScripts.deployScriptInstalled ? "npm run deploy" : "npm run pharos:erc20:deploy"}\``);
   }
   if (plan.commands?.powershell?.length) {
     lines.push("", "## Deployment Commands", "");
@@ -1109,6 +1292,12 @@ function renderConsole(plan, args) {
     lines.push(boxLine("mid", width));
     lines.push(boxText(`Generated  ${path.basename(plan.generatedProjectDir)}`, width));
     for (const file of plan.generatedFiles) lines.push(boxText(`- ${file}`, width));
+  }
+  if (plan.projectScripts) {
+    lines.push(boxLine("mid", width));
+    lines.push(boxText("Project npm scripts", width));
+    lines.push(boxText("Plan       npm run pharos:erc20:plan", width));
+    lines.push(boxText(`Deploy     ${plan.projectScripts.deployScriptInstalled ? "npm run deploy" : "npm run pharos:erc20:deploy"}`, width));
   }
   lines.push(boxLine("mid", width));
   lines.push(boxText("Recommendations", width));

@@ -7,7 +7,7 @@ This skill is designed as a launch workflow, not a blind deploy command.
 - **Plan-only:** validate parameters and produce a launch plan. No private key required.
 - **Generate:** create Solidity, Foundry, Node.js, verification, and post-launch files. No private key required.
 - **Deploy with Foundry:** execute the generated `forge script` deployment path. Requires `forge`, explicit user confirmation, `--deploy --yes`, and `PRIVATE_KEY` in the local environment.
-- **Deploy with Node.js:** run the generated `deploy.mjs` path using `ethers` and `solc`. Requires `npm install`, explicit user confirmation, and `PRIVATE_KEY` in the local environment.
+- **Deploy with Node.js:** run the generated `deploy.mjs` path using `ethers` and `solc`. Can be launched from the skill project with `--output-dir <folder> --deploy --deploy-backend node --yes`; the script reads the generated `launch-config.json` and installs dependencies there when needed. If generation used `--install-project-scripts`, `npm run deploy` from the project root calls the same guarded command. Requires explicit user confirmation and `PRIVATE_KEY` in the local environment.
 
 ## Difference From Quick ERC20 Deploy
 
@@ -32,5 +32,6 @@ This launch agent covers the broader launch process:
 - Do not write private keys to generated files.
 - For deployment, prefer a local environment variable named `PRIVATE_KEY`.
 - Do not print `PRIVATE_KEY`.
+- Treat project-root `npm run deploy` as a convenience wrapper only; it still requires `PRIVATE_KEY`, `--yes`, and mainnet confirmation logic inside the skill.
 - Do not deploy to mainnet unless the user explicitly confirms mainnet deployment.
 - Do not commit `node_modules`, `.env`, broadcast artifacts, or deployment files containing sensitive operational data.

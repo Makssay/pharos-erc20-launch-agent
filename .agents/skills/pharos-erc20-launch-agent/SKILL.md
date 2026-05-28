@@ -20,7 +20,8 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 
 5. If the user wants launch files, add `--generate --output-dir <folder>`. By default this generates both Foundry and Node.js deployment paths.
 6. Use `--backend foundry`, `--backend node`, or `--backend both` when the user wants a specific deployment backend.
-7. If the user wants real deployment, stop and request explicit confirmation. Only run deployment with `--deploy --yes`; for mainnet also require `--confirm-mainnet`.
+7. If the user wants `npm run deploy` from the project where the skill is installed, add `--install-project-scripts` during generation. This creates or updates the current project's `package.json` with `pharos:erc20:*` scripts and a safe `deploy` alias when no conflicting deploy script exists.
+8. If the user wants real deployment, stop and request explicit confirmation. Only run deployment with `--deploy --yes`; for mainnet also require `--confirm-mainnet`.
 
 ## Inputs
 
@@ -43,6 +44,8 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 - `--offline` or `--skip-rpc`: Skip live RPC checks.
 - `--deploy`: Execute the generated deployment script.
 - `--deploy-backend foundry|node`: Optional. Defaults to `foundry`.
+- `--install-project-scripts`: Optional. Add npm scripts to the current project so deployment can be started from the project where the skill is installed.
+- `--force-project-scripts`: Optional. Allow the skill to replace an existing `deploy` npm script.
 - `--yes`: Required with `--deploy` after explicit user confirmation.
 - `--confirm-mainnet`: Required with `--deploy --network mainnet`.
 - `--no-color`: Disable ANSI colors for console output.
@@ -63,12 +66,14 @@ When `--generate` is used, the script creates:
 - `verification-checklist.md`: verification commands and checklist.
 - `airdrop-template.csv`: starter CSV for post-launch distribution.
 - `README.md`: generated project usage notes.
+- Optional current-project `package.json` scripts when `--install-project-scripts` is used.
 
 ## Safety Rules
 
 - Planning and generation are read-only and must not request private keys.
 - Never write private keys to files.
-- Node.js deployment requires `npm install` in the generated launch project before `npm run deploy`.
+- Node.js deployment can be managed from the skill project with `--deploy --deploy-backend node --output-dir <folder> --yes`; the script reads `launch-config.json` from the generated folder and installs Node dependencies there when needed.
+- If `--install-project-scripts` was used, `npm run deploy` from the project root is just an alias to the guarded skill deployment command.
 - Foundry deployment requires `forge` in PATH.
 - Before any `--deploy`, confirm the token parameters, owner/deployer, network, and gas readiness with the user.
 - Do not deploy to `mainnet` unless the user explicitly says mainnet and confirms the action.
