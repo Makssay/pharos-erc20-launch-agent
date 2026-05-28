@@ -57,6 +57,29 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --format console --offline
 ```
 
+## Generate FaroSwap Liquidity Files
+
+```powershell
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir .\demo-pharos-token-launch --install-project-scripts
+```
+
+Generated liquidity files:
+
+- `add-liquidity.mjs`
+- `faroswap-liquidity-plan.md`
+- `npm run add-liquidity` inside the generated launch folder
+- `npm run pharos:erc20:liquidity` from the project root when `--install-project-scripts` is used
+
+After token deployment:
+
+```powershell
+cd .\demo-pharos-token-launch
+npm install --no-audit --no-fund
+$env:PRIVATE_KEY="..."
+$env:TOKEN_ADDRESS="0xDeployedTokenAddress"
+npm run add-liquidity
+```
+
 ## Optional Deployment
 
 Only run this after explicit confirmation from the user.
@@ -97,8 +120,8 @@ npm run deploy
 1. Show the skill folder and `SKILL.md`.
 2. Run `--help`.
 3. Run a plan-only testnet launch plan.
-4. Run `--generate --backend node --output-dir demo-pharos-token-launch --install-project-scripts`.
-5. Open generated `launch-plan.md`, `src/PharosLaunchToken.sol`, `deploy.mjs`, generated `package.json`, project-root `package.json`, and `verification-checklist.md`.
+4. Run `--generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir demo-pharos-token-launch --install-project-scripts`.
+5. Open generated `launch-plan.md`, `faroswap-liquidity-plan.md`, `src/PharosLaunchToken.sol`, `deploy.mjs`, `add-liquidity.mjs`, generated `package.json`, project-root `package.json`, and `verification-checklist.md`.
 6. Show that no private key is needed for planning or file generation.
-7. Show the managed project-root commands: `npm run pharos:erc20:plan` and `npm run deploy`.
+7. Show the managed project-root commands: `npm run pharos:erc20:plan`, `npm run deploy`, and `npm run pharos:erc20:liquidity`.
 8. Optionally show the guarded deploy command, but avoid exposing any private key in video.

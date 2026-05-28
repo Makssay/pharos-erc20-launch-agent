@@ -8,6 +8,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = path.resolve(__dirname, "..");
 const NETWORKS_PATH = path.join(SKILL_ROOT, "assets", "networks.json");
 const DEFAULT_DEPLOY_GAS = 1600000n;
+const DEFAULT_LIQUIDITY_GAS = 450000n;
+const DEFAULT_LIQUIDITY_SLIPPAGE_BPS = 100;
+const DEFAULT_LIQUIDITY_DEADLINE_MINUTES = 20;
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -110,6 +113,15 @@ function parseArgs(argv) {
     deployBackendExplicit: false,
     installProjectScripts: false,
     forceProjectScripts: false,
+    liquidityPlan: false,
+    generateLiquidity: false,
+    liquidityRouter: null,
+    liquidityTokenAmount: null,
+    liquidityNativeAmount: null,
+    liquidityRecipient: null,
+    liquiditySlippageBps: String(DEFAULT_LIQUIDITY_SLIPPAGE_BPS),
+    liquidityDeadlineMinutes: String(DEFAULT_LIQUIDITY_DEADLINE_MINUTES),
+    tokenAddress: null,
     planOnly: false,
     help: false
   };
@@ -182,6 +194,46 @@ function parseArgs(argv) {
         args.installProjectScripts = true;
         args.forceProjectScripts = true;
         break;
+      case "--liquidity-plan":
+      case "--faroswap-liquidity-plan":
+        args.liquidityPlan = true;
+        break;
+      case "--generate-liquidity":
+      case "--generate-faroswap-liquidity":
+        args.generate = true;
+        args.generateLiquidity = true;
+        break;
+      case "--liquidity-router":
+      case "--faroswap-router":
+        args.liquidityRouter = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--liquidity-token-amount":
+        args.liquidityTokenAmount = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--liquidity-native-amount":
+        args.liquidityNativeAmount = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--liquidity-recipient":
+      case "--lp-recipient":
+        args.liquidityRecipient = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--liquidity-slippage-bps":
+      case "--slippage-bps":
+        args.liquiditySlippageBps = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--liquidity-deadline-minutes":
+        args.liquidityDeadlineMinutes = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
+      case "--token-address":
+        args.tokenAddress = readValue(argv, ++i, arg);
+        args.liquidityPlan = true;
+        break;
       case "--generate":
         args.generate = true;
         break;
@@ -223,6 +275,7 @@ function parseArgs(argv) {
   }
   if (!args.deployBackend) args.deployBackend = args.backends.length === 1 ? args.backends[0] : "foundry";
   if (args.deploy && !args.backends.includes(args.deployBackend)) args.backends.push(args.deployBackend);
+  if (args.generateLiquidity && !args.backends.includes("node")) args.backends.push("node");
   return args;
 }
 
@@ -281,6 +334,14 @@ Options:
   --deploy-backend <type>   foundry or node; default foundry
   --install-project-scripts Add npm scripts to the current project package.json
   --force-project-scripts   Allow overwriting an existing deploy script
+  --liquidity-plan          Add a FaroSwap liquidity plan
+  --generate-liquidity      Generate Node.js FaroSwap add-liquidity script
+  --liquidity-token-amount  Token amount to pair with native PHRS/PROS
+  --liquidity-native-amount Native amount to pair with token
+  --liquidity-router <addr> FaroSwap V2 router; default is known testnet router
+  --liquidity-recipient     LP token recipient; defaults to owner/deployer
+  --liquidity-slippage-bps  Slippage in basis points, default 100
+  --token-address <addr>    Existing deployed token address for liquidity
   --yes                     Required with --deploy
   --confirm-mainnet         Required with --deploy --network mainnet
   --no-color                Disable console colors
@@ -289,6 +350,7 @@ Examples:
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch --install-project-scripts
+  node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir demo-pharos-token-launch
   node scripts/launch-erc20.mjs --output-dir demo-pharos-token-launch --deploy --deploy-backend node --yes
 `);
 }
@@ -314,9 +376,21 @@ function hydrateArgsFromLaunchConfig(args, config) {
   if (!args.deployer && config.deployer) args.deployer = config.deployer;
   if (!args.network && config.network?.name) args.network = config.network.name;
   if (!args.rpcUrl && config.network?.rpcUrl) args.rpcUrl = config.network.rpcUrl;
+  if (!args.tokenAddress && config.tokenAddress) args.tokenAddress = config.tokenAddress;
+  if (config.liquidity) {
+    if (!args.liquidityPlan && !args.generateLiquidity) args.liquidityPlan = true;
+    if (!args.generateLiquidity) args.generateLiquidity = true;
+    if (!args.liquidityRouter && config.liquidity.router) args.liquidityRouter = config.liquidity.router;
+    if (!args.liquidityTokenAmount && config.liquidity.tokenAmountInput) args.liquidityTokenAmount = config.liquidity.tokenAmountInput;
+    if (!args.liquidityNativeAmount && config.liquidity.nativeAmountInput) args.liquidityNativeAmount = config.liquidity.nativeAmountInput;
+    if (!args.liquidityRecipient && config.liquidity.recipient) args.liquidityRecipient = config.liquidity.recipient;
+    if ((!args.liquiditySlippageBps || args.liquiditySlippageBps === String(DEFAULT_LIQUIDITY_SLIPPAGE_BPS)) && config.liquidity.slippageBps !== undefined) args.liquiditySlippageBps = String(config.liquidity.slippageBps);
+    if ((!args.liquidityDeadlineMinutes || args.liquidityDeadlineMinutes === String(DEFAULT_LIQUIDITY_DEADLINE_MINUTES)) && config.liquidity.deadlineMinutes !== undefined) args.liquidityDeadlineMinutes = String(config.liquidity.deadlineMinutes);
+  }
   if (Array.isArray(config.backends) && config.backends.length && !args.backend && !args.generateFoundry && !args.generateNode) {
     args.backends = config.backends.filter((backend) => backend === "foundry" || backend === "node");
   }
+  if (args.generateLiquidity && !args.backends.includes("node")) args.backends.push("node");
   if (!args.deployBackendExplicit && config.deployment?.deployBackend) {
     args.deployBackend = config.deployment.deployBackend;
   }
@@ -372,17 +446,63 @@ function normalizeAmountString(value) {
 }
 
 function parseSupply(value, decimals) {
+  return parseDecimalUnits(value, decimals, "--supply");
+}
+
+function parseDecimalUnits(value, decimals, label) {
   const normalized = normalizeAmountString(value);
   const match = /^(\d+)(?:\.(\d+))?$/.exec(normalized);
-  if (!match) throw new Error("--supply must be a positive decimal number");
+  if (!match) throw new Error(`${label} must be a positive decimal number`);
   const fraction = match[2] || "";
   if (fraction.length > decimals) {
-    throw new Error(`Supply has ${fraction.length} decimal places but token decimals is ${decimals}`);
+    throw new Error(`${label} has ${fraction.length} decimal places but decimals is ${decimals}`);
   }
   const scale = 10n ** BigInt(decimals);
   const total = BigInt(match[1]) * scale + (fraction ? BigInt(fraction.padEnd(decimals, "0")) : 0n);
-  if (total <= 0n) throw new Error("--supply must be greater than zero");
+  if (total <= 0n) throw new Error(`${label} must be greater than zero`);
   return total;
+}
+
+function parseInteger(value, label, min, max) {
+  if (!/^\d+$/.test(String(value))) throw new Error(`${label} must be an integer`);
+  const parsed = Number.parseInt(String(value), 10);
+  if (parsed < min || parsed > max) throw new Error(`${label} must be between ${min} and ${max}`);
+  return parsed;
+}
+
+function buildLiquiditySpec(args, network, token) {
+  const requested = args.liquidityPlan ||
+    args.generateLiquidity ||
+    args.liquidityRouter ||
+    args.liquidityTokenAmount ||
+    args.liquidityNativeAmount ||
+    args.liquidityRecipient ||
+    args.tokenAddress;
+  if (!requested) return null;
+
+  const router = args.liquidityRouter || network.faroswap?.uniswapV2Router02 || null;
+  const tokenAmountBaseUnits = args.liquidityTokenAmount ? parseDecimalUnits(args.liquidityTokenAmount, token.decimals, "--liquidity-token-amount").toString() : null;
+  const nativeAmountWei = args.liquidityNativeAmount ? parseDecimalUnits(args.liquidityNativeAmount, 18, "--liquidity-native-amount").toString() : null;
+  const slippageBps = parseInteger(args.liquiditySlippageBps, "--liquidity-slippage-bps", 0, 5000);
+  const deadlineMinutes = parseInteger(args.liquidityDeadlineMinutes, "--liquidity-deadline-minutes", 1, 1440);
+  const recipient = args.liquidityRecipient || args.owner || args.deployer || null;
+
+  return {
+    protocol: "faroswap-v2",
+    pair: `${token.symbol}/${network.nativeToken}`,
+    router,
+    routerSource: args.liquidityRouter ? "cli" : network.faroswap?.uniswapV2Router02 ? "faroswap-docs" : "missing",
+    tokenAddress: args.tokenAddress || null,
+    tokenAmountInput: args.liquidityTokenAmount || null,
+    tokenAmountBaseUnits,
+    nativeAmountInput: args.liquidityNativeAmount || null,
+    nativeAmountWei,
+    recipient,
+    slippageBps,
+    deadlineMinutes,
+    nativeToken: network.nativeToken,
+    docs: network.faroswap?.docs || "https://docs.faroswap.xyz/en/developer/contracts-integration"
+  };
 }
 
 function createBasePlan(args, network, token) {
@@ -395,9 +515,12 @@ function createBasePlan(args, network, token) {
       rpcUrl: network.rpcUrl,
       explorerUrl: network.explorerUrl,
       explorerApiUrl: network.explorerApiUrl,
-      nativeToken: network.nativeToken
+      nativeToken: network.nativeToken,
+      faroswap: network.faroswap || null
     },
     token,
+    tokenAddress: args.tokenAddress || null,
+    liquidity: buildLiquiditySpec(args, network, token),
     backends: args.backends,
     deployBackend: args.deployBackend,
     addresses: {
@@ -428,12 +551,31 @@ function addStaticChecks(plan, args, network, token) {
   addCheck(plan, network.name === "mainnet" ? (args.confirmMainnet ? "OK" : "WARN") : "OK", network.name === "mainnet" ? "Target network is Pharos mainnet." : "Target network is testnet-friendly for launch demos.");
   addCheck(plan, "OK", `Launch project backend selection: ${args.backends.join(", ")}.`);
   if (args.deploy) addCheck(plan, "OK", `Deployment backend selected: ${args.deployBackend}.`);
+  if (plan.liquidity) addLiquidityChecks(plan, args, network, token);
 
   if (args.deploy) {
     if (!args.yes) addCheck(plan, "FAIL", "Deployment mode requires --yes after explicit user confirmation.");
     if (network.name === "mainnet" && !args.confirmMainnet) addCheck(plan, "FAIL", "Mainnet deployment requires --confirm-mainnet.");
     if (!process.env.PRIVATE_KEY) addCheck(plan, "FAIL", "Deployment mode requires PRIVATE_KEY in the local environment.");
   }
+}
+
+function addLiquidityChecks(plan, args, network, token) {
+  const liquidity = plan.liquidity;
+  addCheck(plan, "OK", `FaroSwap liquidity plan enabled for ${liquidity.pair}.`);
+  if (liquidity.router) addCheck(plan, ADDRESS_RE.test(liquidity.router) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.router) ? `FaroSwap V2 router selected: ${compactAddress(liquidity.router)}.` : "Liquidity router is invalid. Expected 0x plus 40 hex characters.");
+  else addCheck(plan, "FAIL", "No FaroSwap V2 router is known for this network. Pass --liquidity-router explicitly.");
+  if (network.name !== "atlantic-testnet" && !args.liquidityRouter) addCheck(plan, "WARN", "FaroSwap default router is only configured for atlantic-testnet; mainnet requires an explicit reviewed router.");
+  if (liquidity.tokenAddress) addCheck(plan, ADDRESS_RE.test(liquidity.tokenAddress) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.tokenAddress) ? `Existing token address provided: ${compactAddress(liquidity.tokenAddress)}.` : "Token address is invalid. Expected 0x plus 40 hex characters.");
+  else addCheck(plan, "WARN", "No token address provided yet; add-liquidity script will read TOKEN_ADDRESS or deployment-result.json after deployment.");
+  if (liquidity.tokenAmountBaseUnits) addCheck(plan, BigInt(liquidity.tokenAmountBaseUnits) <= BigInt(token.initialSupplyBaseUnits) ? "OK" : "FAIL", BigInt(liquidity.tokenAmountBaseUnits) <= BigInt(token.initialSupplyBaseUnits) ? `Liquidity token amount planned: ${liquidity.tokenAmountInput} ${token.symbol}.` : "Liquidity token amount is larger than initial supply.");
+  else addCheck(plan, "FAIL", "--liquidity-token-amount is required for a concrete liquidity script.");
+  if (liquidity.nativeAmountWei) addCheck(plan, "OK", `Liquidity native amount planned: ${liquidity.nativeAmountInput} ${network.nativeToken}.`);
+  else addCheck(plan, "FAIL", "--liquidity-native-amount is required for a concrete liquidity script.");
+  if (liquidity.recipient) addCheck(plan, ADDRESS_RE.test(liquidity.recipient) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.recipient) ? `LP recipient selected: ${compactAddress(liquidity.recipient)}.` : "Liquidity recipient is invalid. Expected 0x plus 40 hex characters.");
+  else addCheck(plan, "WARN", "No liquidity recipient provided; generated script will use the deployer wallet.");
+  addCheck(plan, "OK", `Liquidity slippage set to ${liquidity.slippageBps} bps.`);
+  if (args.generateLiquidity && !args.backends.includes("node")) addCheck(plan, "FAIL", "FaroSwap liquidity generation requires the Node.js backend.");
 }
 
 async function addRpcChecks(plan, args, network) {
@@ -496,6 +638,12 @@ function addEstimates(plan, args, network) {
   plan.estimates.deployGasLimit = DEFAULT_DEPLOY_GAS.toString();
   plan.estimates.estimatedDeployCostWei = estimatedCostWei.toString();
   plan.estimates.estimatedDeployCostNative = formatUnits(estimatedCostWei, 18, 8);
+  if (plan.liquidity) {
+    const liquidityCostWei = gasPriceWei * DEFAULT_LIQUIDITY_GAS;
+    plan.estimates.liquidityGasLimit = DEFAULT_LIQUIDITY_GAS.toString();
+    plan.estimates.estimatedLiquidityGasCostWei = liquidityCostWei.toString();
+    plan.estimates.estimatedLiquidityGasCostNative = formatUnits(liquidityCostWei, 18, 8);
+  }
 
   if (plan.estimates.deployerBalanceWei) {
     const balance = BigInt(plan.estimates.deployerBalanceWei);
@@ -510,6 +658,10 @@ function addRecommendations(plan, args, token) {
   if (!args.deployer) plan.recommendations.push("Set --deployer to check gas readiness before deployment.");
   if (token.decimals > 18) plan.recommendations.push("Use 18 decimals or less unless there is a strong reason.");
   if (!args.generate && !args.deploy) plan.recommendations.push("Use --generate --output-dir <folder> to create reviewable launch files.");
+  if (plan.liquidity) {
+    plan.recommendations.push("Review FaroSwap router address and liquidity amounts before adding liquidity.");
+    plan.recommendations.push("Add liquidity only after the ERC20 deployment result and token balance are confirmed.");
+  }
   if (plan.network.name === "mainnet") plan.recommendations.push("Run the same launch on atlantic-testnet before mainnet deployment.");
   plan.recommendations.push("Review generated Solidity and verification commands before deployment.");
 }
@@ -541,12 +693,18 @@ function generateLaunchProject(outputDir, args, network, token) {
     files.push(writeFile(root, "foundry.toml", renderFoundryToml()));
   }
   if (args.backends.includes("node")) {
-    files.push(writeFile(root, "package.json", renderPackageJson(token)));
+    files.push(writeFile(root, "package.json", renderPackageJson(token, Boolean(args.generateLiquidity))));
     files.push(writeFile(root, "deploy.mjs", renderNodeDeployer(network, token, ownerLiteral)));
+    if (args.generateLiquidity) {
+      if (!args.liquidityPlan) args.liquidityPlan = true;
+      const liquidity = buildLiquiditySpec(args, network, token);
+      files.push(writeFile(root, "add-liquidity.mjs", renderFaroSwapLiquidityScript(network, token, liquidity)));
+      files.push(writeFile(root, "faroswap-liquidity-plan.md", renderFaroSwapLiquidityPlan(network, token, liquidity)));
+    }
   }
 
-  files.push(writeFile(root, "README.md", renderGeneratedReadme(network, token, args.backends)));
-  return { files, commands: buildCommands(network, args.backends) };
+  files.push(writeFile(root, "README.md", renderGeneratedReadme(network, token, args.backends, Boolean(args.generateLiquidity))));
+  return { files, commands: buildCommands(network, args.backends, Boolean(args.generateLiquidity)) };
 }
 
 function writeFile(root, relativePath, content) {
@@ -586,6 +744,9 @@ function installProjectScripts(outputDir, args, network) {
 
   pkg.scripts["pharos:erc20:plan"] = `${baseCommand} --format console`;
   pkg.scripts["pharos:erc20:deploy"] = deployCommand;
+  if (args.generateLiquidity) {
+    pkg.scripts["pharos:erc20:liquidity"] = `cd ${quoteNpmArg(launchDir)} && npm run add-liquidity`;
+  }
 
   const existingDeploy = pkg.scripts.deploy;
   const deployOwnedBySkill = typeof existingDeploy === "string" && existingDeploy.includes("pharos:erc20:deploy");
@@ -602,6 +763,7 @@ function installProjectScripts(outputDir, args, network) {
     scripts: {
       "pharos:erc20:plan": pkg.scripts["pharos:erc20:plan"],
       "pharos:erc20:deploy": pkg.scripts["pharos:erc20:deploy"],
+      "pharos:erc20:liquidity": pkg.scripts["pharos:erc20:liquidity"] || null,
       deploy: deployScriptInstalled ? pkg.scripts.deploy : existingDeploy
     },
     deployScriptInstalled,
@@ -789,26 +951,30 @@ out/
 cache/
 broadcast/
 deployment-result.json
+liquidity-result.json
 *.log
 `;
 }
 
 function buildLaunchConfig(args, network, token) {
+  const liquidity = buildLiquiditySpec(args, network, token);
   return {
     generatedAt: new Date().toISOString(),
     network,
     token,
+    tokenAddress: args.tokenAddress || null,
+    liquidity,
     backends: args.backends,
     owner: args.owner || "deployer",
     deployer: args.deployer || null,
     deployment: {
       deployBackend: args.deployBackend,
-      commands: buildCommands(network, args.backends)
+      commands: buildCommands(network, args.backends, Boolean(args.generateLiquidity))
     }
   };
 }
 
-function buildCommands(network, backends = ["foundry", "node"]) {
+function buildCommands(network, backends = ["foundry", "node"], includeLiquidity = false) {
   const commands = { powershell: [], bash: [] };
   if (backends.includes("foundry")) {
     commands.foundry = {
@@ -844,18 +1010,44 @@ function buildCommands(network, backends = ["foundry", "node"]) {
     commands.powershell.push("# Node.js deployer", ...commands.node.powershell);
     commands.bash.push("# Node.js deployer", ...commands.node.bash);
   }
+  if (includeLiquidity) {
+    commands.liquidity = {
+      powershell: [
+        "npm install --no-audit --no-fund",
+        "$env:PRIVATE_KEY=\"paste_private_key_here\"",
+        "# Optional if deployment-result.json is not present:",
+        "$env:TOKEN_ADDRESS=\"0xDeployedTokenAddress\"",
+        `$env:RPC_URL=\"${network.rpcUrl}\"`,
+        "npm run add-liquidity"
+      ],
+      bash: [
+        "npm install --no-audit --no-fund",
+        "export PRIVATE_KEY=\"paste_private_key_here\"",
+        "# Optional if deployment-result.json is not present:",
+        "export TOKEN_ADDRESS=\"0xDeployedTokenAddress\"",
+        `export RPC_URL=\"${network.rpcUrl}\"`,
+        "npm run add-liquidity"
+      ]
+    };
+    if (commands.powershell.length) commands.powershell.push("");
+    if (commands.bash.length) commands.bash.push("");
+    commands.powershell.push("# FaroSwap liquidity", ...commands.liquidity.powershell);
+    commands.bash.push("# FaroSwap liquidity", ...commands.liquidity.bash);
+  }
   return commands;
 }
 
-function renderPackageJson(token) {
+function renderPackageJson(token, includeLiquidity = false) {
+  const scripts = {
+    "compile-check": "node deploy.mjs --compile-only",
+    deploy: "node deploy.mjs"
+  };
+  if (includeLiquidity) scripts["add-liquidity"] = "node add-liquidity.mjs";
   return `${JSON.stringify({
     name: npmPackageName(token),
     private: true,
     type: "module",
-    scripts: {
-      "compile-check": "node deploy.mjs --compile-only",
-      deploy: "node deploy.mjs"
-    },
+    scripts,
     dependencies: {
       ethers: "^6.13.5",
       solc: "^0.8.20"
@@ -998,6 +1190,197 @@ function bigintJsonReplacer(_key, value) {
 `;
 }
 
+function renderFaroSwapLiquidityScript(network, token, liquidity) {
+  const networkJson = JSON.stringify({
+    name: network.name,
+    chainId: network.chainId,
+    rpcUrl: network.rpcUrl,
+    explorerUrl: network.explorerUrl,
+    nativeToken: network.nativeToken
+  }, null, 2);
+  const tokenJson = JSON.stringify({
+    contractName: token.contractName,
+    symbol: token.symbol,
+    decimals: token.decimals
+  }, null, 2);
+  const liquidityJson = JSON.stringify(liquidity, null, 2);
+  return `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { ethers } from "ethers";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const NETWORK = ${networkJson};
+const TOKEN = ${tokenJson};
+const LIQUIDITY = ${liquidityJson};
+
+const ERC20_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
+  "function approve(address,uint256) returns (bool)"
+];
+
+const ROUTER_ABI = [
+  "function addLiquidityETH(address token,uint amountTokenDesired,uint amountTokenMin,uint amountETHMin,address to,uint deadline) payable returns (uint amountToken,uint amountETH,uint liquidity)"
+];
+
+main().catch((error) => {
+  console.error("Liquidity add failed:", error.message);
+  process.exit(1);
+});
+
+async function main() {
+  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment");
+  if (!LIQUIDITY.router || !ethers.isAddress(LIQUIDITY.router)) throw new Error("Valid FaroSwap router address is required");
+  if (!LIQUIDITY.tokenAmountBaseUnits) throw new Error("liquidity token amount is missing in launch-config.json");
+  if (!LIQUIDITY.nativeAmountWei) throw new Error("liquidity native amount is missing in launch-config.json");
+
+  const tokenAddress = resolveTokenAddress();
+  if (!ethers.isAddress(tokenAddress)) throw new Error("Valid TOKEN_ADDRESS or deployment-result.json contractAddress is required");
+
+  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || NETWORK.rpcUrl);
+  const connectedNetwork = await provider.getNetwork();
+  if (Number(connectedNetwork.chainId) !== NETWORK.chainId) {
+    throw new Error("Wrong chain: expected " + NETWORK.chainId + ", got " + connectedNetwork.chainId.toString());
+  }
+
+  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
+  const router = new ethers.Contract(LIQUIDITY.router, ROUTER_ABI, wallet);
+  const recipient = LIQUIDITY.recipient && ethers.isAddress(LIQUIDITY.recipient) ? LIQUIDITY.recipient : wallet.address;
+  const tokenAmount = BigInt(LIQUIDITY.tokenAmountBaseUnits);
+  const nativeAmount = BigInt(LIQUIDITY.nativeAmountWei);
+  const slippageBps = BigInt(LIQUIDITY.slippageBps);
+  const minToken = tokenAmount * (10000n - slippageBps) / 10000n;
+  const minNative = nativeAmount * (10000n - slippageBps) / 10000n;
+  const deadline = Math.floor(Date.now() / 1000) + Number(LIQUIDITY.deadlineMinutes) * 60;
+
+  const tokenBalance = await tokenContract.balanceOf(wallet.address);
+  if (tokenBalance < tokenAmount) throw new Error("Wallet token balance is below planned liquidity token amount");
+  const nativeBalance = await provider.getBalance(wallet.address);
+  if (nativeBalance <= nativeAmount) throw new Error("Wallet native balance is not enough for liquidity plus gas");
+
+  const allowance = await tokenContract.allowance(wallet.address, LIQUIDITY.router);
+  if (allowance < tokenAmount) {
+    console.log("Approving FaroSwap router...");
+    const approveTx = await tokenContract.approve(LIQUIDITY.router, tokenAmount);
+    console.log("Approve tx:", approveTx.hash);
+    await approveTx.wait();
+  }
+
+  const gasEstimate = await router.addLiquidityETH.estimateGas(
+    tokenAddress,
+    tokenAmount,
+    minToken,
+    minNative,
+    recipient,
+    deadline,
+    { value: nativeAmount }
+  );
+
+  console.log("Network:", NETWORK.name, NETWORK.chainId);
+  console.log("Token:", tokenAddress);
+  console.log("Router:", LIQUIDITY.router);
+  console.log("Recipient:", recipient);
+  console.log("Token amount:", tokenAmount.toString());
+  console.log("Native amount:", nativeAmount.toString());
+  console.log("Gas estimate:", gasEstimate.toString());
+
+  const tx = await router.addLiquidityETH(
+    tokenAddress,
+    tokenAmount,
+    minToken,
+    minNative,
+    recipient,
+    deadline,
+    {
+      value: nativeAmount,
+      gasLimit: gasEstimate * 120n / 100n
+    }
+  );
+  console.log("Liquidity tx:", tx.hash);
+  const receipt = await tx.wait();
+
+  const explorerBase = NETWORK.explorerUrl.replace(/\\/$/, "");
+  const report = {
+    generatedAt: new Date().toISOString(),
+    network: NETWORK,
+    token: TOKEN,
+    tokenAddress,
+    router: LIQUIDITY.router,
+    recipient,
+    tokenAmount: tokenAmount.toString(),
+    nativeAmount: nativeAmount.toString(),
+    minToken: minToken.toString(),
+    minNative: minNative.toString(),
+    slippageBps: Number(slippageBps),
+    transactionHash: tx.hash,
+    blockNumber: receipt?.blockNumber ?? null,
+    gasUsed: receipt?.gasUsed?.toString() ?? null,
+    explorerTxUrl: explorerBase + "/tx/" + tx.hash
+  };
+  fs.writeFileSync(path.join(__dirname, "liquidity-result.json"), JSON.stringify(report, bigintJsonReplacer, 2) + "\\n", "utf8");
+  console.log("Explorer:", report.explorerTxUrl);
+  console.log("Saved: liquidity-result.json");
+}
+
+function resolveTokenAddress() {
+  if (process.env.TOKEN_ADDRESS) return process.env.TOKEN_ADDRESS;
+  const deploymentPath = path.join(__dirname, "deployment-result.json");
+  if (fs.existsSync(deploymentPath)) {
+    const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
+    if (deployment.contractAddress) return deployment.contractAddress;
+  }
+  if (LIQUIDITY.tokenAddress) return LIQUIDITY.tokenAddress;
+  throw new Error("Set TOKEN_ADDRESS or run token deployment first so deployment-result.json exists");
+}
+
+function bigintJsonReplacer(_key, value) {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+`;
+}
+
+function renderFaroSwapLiquidityPlan(network, token, liquidity) {
+  return `# FaroSwap Liquidity Plan
+
+Protocol: FaroSwap V2-style liquidity
+Network: ${network.name}
+Router: ${liquidity.router || "missing"}
+Pair: ${liquidity.pair}
+
+## Amounts
+
+- Token amount: ${liquidity.tokenAmountInput || "missing"} ${token.symbol}
+- Token base units: ${liquidity.tokenAmountBaseUnits || "missing"}
+- Native amount: ${liquidity.nativeAmountInput || "missing"} ${network.nativeToken}
+- Native wei: ${liquidity.nativeAmountWei || "missing"}
+- Slippage: ${liquidity.slippageBps} bps
+- LP recipient: ${liquidity.recipient || "deployer wallet"}
+
+## Usage
+
+After ERC20 deployment, either keep \`deployment-result.json\` in this folder or set \`TOKEN_ADDRESS\`.
+
+\`\`\`powershell
+npm install --no-audit --no-fund
+$env:PRIVATE_KEY="paste_private_key_here"
+$env:TOKEN_ADDRESS="0xDeployedTokenAddress"
+npm run add-liquidity
+\`\`\`
+
+## Safety
+
+- Confirm the FaroSwap router address before signing.
+- Confirm token and native amounts before signing.
+- Adding liquidity is a real write operation and can expose you to impermanent loss.
+- Never commit \`.env\`, private keys, \`deployment-result.json\`, or \`liquidity-result.json\`.
+`;
+}
+
 function renderVerificationChecklist(network, token, ownerLiteral) {
   const constructorArgs = `$(cast abi-encode "constructor(string,string,uint8,uint256,address)" "${escapeShell(token.name)}" "${escapeShell(token.symbol)}" ${token.decimals} ${token.initialSupplyBaseUnits} ${ownerLiteral})`;
   return `# Verification Checklist
@@ -1037,8 +1420,8 @@ Checklist:
 `;
 }
 
-function renderGeneratedReadme(network, token, backends = ["foundry", "node"]) {
-  const commands = buildCommands(network, backends);
+function renderGeneratedReadme(network, token, backends = ["foundry", "node"], includeLiquidity = false) {
+  const commands = buildCommands(network, backends, includeLiquidity);
   const sections = [];
   sections.push(`# ${token.name} ERC20 Launch Project
 
@@ -1090,6 +1473,20 @@ Compile-only check:
 npm install --no-audit --no-fund
 npm run compile-check
 \`\`\`
+`);
+  }
+  if (includeLiquidity && commands.liquidity) {
+    sections.push(`## Add Liquidity On FaroSwap
+
+The generated \`add-liquidity.mjs\` script creates a FaroSwap V2-style ${token.symbol}/${network.nativeToken} liquidity position. It reads \`deployment-result.json\` after token deployment or uses \`TOKEN_ADDRESS\` from the environment.
+
+PowerShell:
+
+\`\`\`powershell
+${commands.liquidity.powershell.join("\n")}
+\`\`\`
+
+Review \`faroswap-liquidity-plan.md\` before signing.
 `);
   }
 
@@ -1253,12 +1650,22 @@ function renderMarkdown(plan) {
   lines.push(`- Decimals: \`${plan.token.decimals}\``);
   lines.push(`- Human supply: \`${plan.token.supplyInput}\``);
   lines.push(`- Base-unit supply: \`${plan.token.initialSupplyBaseUnits}\``, "");
+  if (plan.liquidity) {
+    lines.push("## FaroSwap Liquidity", "");
+    lines.push(`- Pair: \`${plan.liquidity.pair}\``);
+    lines.push(`- Router: \`${plan.liquidity.router || "missing"}\``);
+    lines.push(`- Token amount: \`${plan.liquidity.tokenAmountInput || "missing"} ${plan.token.symbol}\``);
+    lines.push(`- Native amount: \`${plan.liquidity.nativeAmountInput || "missing"} ${plan.network.nativeToken}\``);
+    lines.push(`- LP recipient: \`${plan.liquidity.recipient || "deployer wallet"}\``);
+    lines.push(`- Slippage: \`${plan.liquidity.slippageBps} bps\``, "");
+  }
   lines.push("## Checks", "");
   for (const check of plan.checks) lines.push(`- ${statusBadge(check.status)} ${check.message}`);
   lines.push("", "## Estimates", "");
   lines.push(`- Gas price: \`${plan.estimates.gasPriceWei || "fallback 10000000000"} wei\``);
   lines.push(`- Deployment gas limit estimate: \`${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}\``);
   lines.push(`- Estimated deployment cost: \`${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}\``);
+  if (plan.liquidity) lines.push(`- Estimated liquidity gas cost: \`${plan.estimates.estimatedLiquidityGasCostNative || "pending"} ${plan.network.nativeToken}\``);
   if (plan.estimates.deployerBalanceWei) lines.push(`- Deployer balance: \`${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken}\``);
   if (plan.generatedProjectDir) {
     lines.push("", "## Generated Project", "", "Directory: current launch project folder", "");
@@ -1270,6 +1677,7 @@ function renderMarkdown(plan) {
     lines.push(`- Launch folder: \`${plan.projectScripts.launchDir}\``);
     lines.push("- Plan from project root: `npm run pharos:erc20:plan`");
     lines.push(`- Deploy from project root: \`${plan.projectScripts.deployScriptInstalled ? "npm run deploy" : "npm run pharos:erc20:deploy"}\``);
+    if (plan.projectScripts.scripts["pharos:erc20:liquidity"]) lines.push("- Add liquidity from project root: `npm run pharos:erc20:liquidity`");
   }
   if (plan.commands?.powershell?.length) {
     lines.push("", "## Deployment Commands", "");
@@ -1310,6 +1718,15 @@ function renderConsole(plan, args) {
   lines.push(boxText(`Owner      ${compactAddress(plan.addresses.owner || "deployer")}`, width));
   lines.push(boxText(`Deployer   ${compactAddress(plan.addresses.deployer || "not provided")}`, width));
   lines.push(boxText(`Backends   ${plan.backends.join(", ")}`, width));
+  if (plan.liquidity) {
+    lines.push(boxLine("mid", width));
+    lines.push(boxText("FaroSwap liquidity", width));
+    lines.push(boxText(`Pair       ${plan.liquidity.pair}`, width));
+    lines.push(boxText(`Router     ${compactAddress(plan.liquidity.router || "missing")}`, width));
+    lines.push(boxText(`Token amt  ${plan.liquidity.tokenAmountInput || "missing"} ${plan.token.symbol}`, width));
+    lines.push(boxText(`Native amt ${plan.liquidity.nativeAmountInput || "missing"} ${plan.network.nativeToken}`, width));
+    lines.push(boxText(`Recipient  ${compactAddress(plan.liquidity.recipient || "deployer wallet")}`, width));
+  }
   lines.push(boxLine("mid", width));
   lines.push(boxText("Checks", width));
   for (const check of plan.checks) lines.push(boxText(`${color(check.status, `[${check.status}]`)} ${check.message}`, width));
@@ -1318,6 +1735,7 @@ function renderConsole(plan, args) {
   lines.push(boxText(`Gas price  ${plan.estimates.gasPriceWei || "fallback 10000000000"} wei`, width));
   lines.push(boxText(`Gas limit  ${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}`, width));
   lines.push(boxText(`Cost       ${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}`, width));
+  if (plan.liquidity) lines.push(boxText(`Liq gas    ${plan.estimates.estimatedLiquidityGasCostNative || "pending"} ${plan.network.nativeToken}`, width));
   if (plan.estimates.deployerBalanceWei) {
     lines.push(boxText(`Balance    ${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken}`, width));
   }
@@ -1331,6 +1749,7 @@ function renderConsole(plan, args) {
     lines.push(boxText("Project npm scripts", width));
     lines.push(boxText("Plan       npm run pharos:erc20:plan", width));
     lines.push(boxText(`Deploy     ${plan.projectScripts.deployScriptInstalled ? "npm run deploy" : "npm run pharos:erc20:deploy"}`, width));
+    if (plan.projectScripts.scripts["pharos:erc20:liquidity"]) lines.push(boxText("Liquidity  npm run pharos:erc20:liquidity", width));
   }
   lines.push(boxLine("mid", width));
   lines.push(boxText("Recommendations", width));
