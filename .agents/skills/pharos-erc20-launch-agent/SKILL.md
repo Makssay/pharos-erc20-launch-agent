@@ -24,6 +24,38 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 8. If the user wants a FaroSwap liquidity step, add `--generate-liquidity --liquidity-token-amount <amount> --liquidity-native-amount <amount>` only for `mainnet`. FaroSwap liquidity adding is currently disabled on `atlantic-testnet`; if requested there, report that token deployment still works but add-liquidity is unavailable.
 9. If the user wants real deployment or liquidity, stop and request explicit confirmation. Only run deployment with `--deploy --yes`; for mainnet also require `--confirm-mainnet`.
 
+## Agent Execution Rules
+
+- This skill is self-contained and supports a Node.js deployment path. Do not require Foundry, `forge`, `cast`, Bash, Git Bash, or WSL unless the user explicitly asks for the Foundry backend.
+- If another generic Pharos skill says Foundry is mandatory, treat that as applying only to Foundry/cast workflows. For this ERC20 Launch Agent, prefer the bundled Node.js script with `ethers`, `solc`, and JSON-RPC.
+- On Windows, use PowerShell-compatible commands and the Node.js backend by default.
+- If the user asks to "generate, deploy" or "launch" a token and provides token params, infer `--generate --backend node --install-project-scripts --deploy --deploy-backend node --yes`. If the network is `mainnet`, also include `--confirm-mainnet`.
+- If the user asks to add FaroSwap liquidity and the network is `mainnet`, infer `--generate-liquidity`, `--liquidity-token-amount`, `--liquidity-native-amount`, `--liquidity-slippage-bps`, and `--liquidity-recipient` from the prompt, then deploy first and run the generated liquidity command after deployment succeeds.
+- If the user asks to add liquidity on `atlantic-testnet`, do not attempt the transaction. Explain that testnet liquidity is unavailable and that the generated script exits without sending a transaction.
+- Use the local `PRIVATE_KEY` environment variable for deployment and liquidity. Check whether it exists, but never print or save it.
+- Do not stop after checking for `forge` if Node.js is available. Continue with `--backend node`.
+- Do not ask follow-up questions when the prompt already includes token name, symbol, supply, owner, deployer, network, and liquidity amounts.
+
+## Command Mapping
+
+For a mainnet token launch with liquidity, use this command shape from the project root where the skill is installed:
+
+```powershell
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "<TOKEN_NAME>" --symbol <SYMBOL> --supply <SUPPLY> --owner <OWNER> --deployer <DEPLOYER> --network mainnet --generate --backend node --generate-liquidity --liquidity-token-amount <TOKEN_AMOUNT> --liquidity-native-amount <NATIVE_AMOUNT> --liquidity-slippage-bps <BPS> --liquidity-recipient <LP_RECIPIENT> --output-dir ".\<launch-folder>" --install-project-scripts --format console --confirm-mainnet
+```
+
+Then deploy with:
+
+```powershell
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --output-dir ".\<launch-folder>" --deploy --deploy-backend node --yes --confirm-mainnet
+```
+
+After deployment succeeds, add liquidity from the project root if project scripts were installed:
+
+```powershell
+npm run pharos:erc20:liquidity
+```
+
 ## Inputs
 
 - `--name <token name>`: Required token name.

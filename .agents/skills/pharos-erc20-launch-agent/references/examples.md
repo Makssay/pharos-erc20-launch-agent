@@ -87,6 +87,28 @@ npm run add-liquidity
 
 Only run this after explicit confirmation from the user.
 
+## Minimal Agent Prompt For Mainnet Liquidity
+
+```text
+Use pharos-erc20-launch-agent to generate, deploy, and add FaroSwap liquidity for an ERC20 token on Pharos mainnet.
+
+Token:
+- Name: Codex Liquidity Launch Token
+- Symbol: CLLT
+- Supply: 1000000
+- Owner: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
+- Deployer: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
+- Network: mainnet
+
+Liquidity:
+- Token amount: 100000 CLLT
+- Native amount: 0.5 PROS
+- Slippage: 100 bps
+- LP recipient: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
+```
+
+Expected agent behavior: use `--backend node`, `--deploy-backend node`, `--generate-liquidity`, `--install-project-scripts`, and `--confirm-mainnet`. Do not require Foundry unless the prompt explicitly asks for Foundry.
+
 Foundry backend:
 
 ```powershell
