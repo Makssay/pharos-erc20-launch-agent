@@ -13,7 +13,7 @@ It is more than a quick deploy command: it validates token parameters, checks Ph
 - Foundry deployment project generation.
 - Node.js deployment project generation with `ethers` and `solc`.
 - Optional project-root npm scripts, so `npm run deploy` can call the guarded skill deploy flow from the project where the skill is installed.
-- Optional FaroSwap liquidity planning and `add-liquidity.mjs` generation for token/native liquidity.
+- Optional FaroSwap liquidity planning and `add-liquidity.mjs` generation for mainnet token/native liquidity. Testnet liquidity attempts exit with an unavailable message.
 - Verification checklist with constructor values.
 - Airdrop CSV starter template.
 - Markdown, JSON, and console reports.
@@ -49,11 +49,13 @@ Generate both Foundry and Node.js launch files:
 node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --deployer 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir "F:\Pharos\erc20-launch-demo" --install-project-scripts
 ```
 
-Generate a launch project with a FaroSwap liquidity step:
+Generate a launch project with a FaroSwap liquidity step on mainnet:
 
 ```powershell
-node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir ".\erc20-launch-demo" --install-project-scripts
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network mainnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 0.5 --output-dir ".\erc20-launch-demo" --install-project-scripts --confirm-mainnet
 ```
+
+FaroSwap liquidity adding is currently disabled on `atlantic-testnet`. Token deployment and testing still work there.
 
 Compile generated Node.js deployer:
 
@@ -88,6 +90,7 @@ cd "F:\Pharos\erc20-launch-demo"
 npm install --no-audit --no-fund
 $env:PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
 $env:TOKEN_ADDRESS="0xDEPLOYED_TOKEN_ADDRESS"
+$env:RPC_URL="https://rpc.pharos.xyz"
 npm run add-liquidity
 ```
 
@@ -120,6 +123,7 @@ Use Pharos ERC20 Launch Agent to prepare a safe ERC20 launch plan called Demo Ph
 - Mainnet deployment should require explicit confirmation.
 - Review generated Solidity, launch config, and verification checklist before broadcasting.
 - Project-root `npm run deploy` is a wrapper around the same guarded skill command; it still requires `PRIVATE_KEY`.
+- FaroSwap liquidity adding is currently unavailable on Atlantic testnet; generated testnet liquidity scripts exit before sending transactions.
 - FaroSwap liquidity is a separate post-deploy action. Confirm router, token address, amounts, slippage, and recipient before signing.
 
 ## Requirements
