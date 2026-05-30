@@ -22,23 +22,12 @@
       "explorerApiUrl": "https://api.socialscan.io/pharos-mainnet",
       "nativeToken": "PROS",
       "faroswap": {
-        "ammV2Router": "0xd285e37678F07631F33Eb99927EB3Ff0591A12d7",
-        "ammV2Factory": "0x18FAB7d7027E9fb33Fa90Ca607439449209F7B09",
-        "wrappedNative": "0x52c48D4213107B20BC583832b0d951Fb9Ca8F0B0",
+        "ammV2Router": "0xd285e37678f07631f33eb99927eb3ff0591a12d7",
+        "ammV2Factory": "0x18fab7d7027e9fb33fa90ca607439449209f7b09",
+        "wrappedNative": "0x52c48d4213107b20bc583832b0d951fb9ca8f0b0",
         "routerKind": "faroswap-amm-v2",
         "defaultFeeRate": 30,
         "docs": "https://www.pharosscan.xyz/tx/0xa06717bd747d9bde7a82f48efc2f3a281d738e2bb5b6e50201c30c254c2c2ec6"
-      },
-      "bitverse": {
-        "poolManager": "0xD681e96AD464f8F7F7fa7e1E0c5a367175E44550",
-        "permit2": "0xBE09AD809eE1f1c696a2EA2E9e2F07FAc4013a85",
-        "positionManager": "0x38CDC4049917A533dB44D9255dFd392b385e954C",
-        "positionDescriptor": "0x2ADD9e5Cf8a1d74C952Ce615834b11B3e11a6b04",
-        "quoter": "0xB54Be01aD8c75a392bD7a4cE276717D4b437Ff06",
-        "stateView": "0x616434e941c5E53d44894bF9ca13D517927BF8aF",
-        "universalRouter": "0x6965f9eFB3d24203A2967470720f1E314fE9E2a7",
-        "usdc": "0xc879c018db60520f4355c26ed1a6d572cdac1815",
-        "docs": "https://wiki.bitverse.zone/en/developers/6.amm-dex-integration.md"
       }
     }
   ],
