@@ -105,6 +105,8 @@ $env:TOKEN_ADDRESS="0xDeployedTokenAddress"
 $env:BITVERSE_TICK_LOWER="-887220"
 $env:BITVERSE_TICK_UPPER="887220"
 $env:BITVERSE_POSITION_LIQUIDITY="1000000000000000000"
+# Only for a brand-new pool; this sets the initial pool price:
+$env:BITVERSE_INITIALIZE_POOL="true"
 npm run add-liquidity
 ```
 

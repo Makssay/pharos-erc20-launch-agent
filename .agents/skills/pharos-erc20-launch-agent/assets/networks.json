@@ -21,6 +21,14 @@
       "explorerUrl": "https://www.pharosscan.xyz/",
       "explorerApiUrl": "https://api.socialscan.io/pharos-mainnet",
       "nativeToken": "PROS",
+      "faroswap": {
+        "ammV2Router": "0xd285e37678F07631F33Eb99927EB3Ff0591A12d7",
+        "ammV2Factory": "0x18FAB7d7027E9fb33Fa90Ca607439449209F7B09",
+        "wrappedNative": "0x52c48D4213107B20BC583832b0d951Fb9Ca8F0B0",
+        "routerKind": "faroswap-amm-v2",
+        "defaultFeeRate": 30,
+        "docs": "https://www.pharosscan.xyz/tx/0xa06717bd747d9bde7a82f48efc2f3a281d738e2bb5b6e50201c30c254c2c2ec6"
+      },
       "bitverse": {
         "poolManager": "0xD681e96AD464f8F7F7fa7e1E0c5a367175E44550",
         "permit2": "0xBE09AD809eE1f1c696a2EA2E9e2F07FAc4013a85",

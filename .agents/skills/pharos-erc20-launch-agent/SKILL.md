@@ -54,6 +54,7 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 - `--liquidity-token-amount <amount>`: Token amount to add to the liquidity pair.
 - `--liquidity-native-amount <amount>`: Native PHRS/PROS amount to pair with the token.
 - `--liquidity-router <address>`: FaroSwap V2 router. Defaults to the documented Atlantic testnet router.
+- `--faroswap-fee-rate <integer>`: FaroSwap AMM V2 fee rate. Defaults to `30` on mainnet, based on the observed FaroSwap transaction path.
 - `--liquidity-recipient <address>`: LP token recipient. Defaults to owner/deployer when available.
 - `--liquidity-slippage-bps <bps>`: Slippage tolerance in basis points. Defaults to `100`.
 - `--token-address <address>`: Existing deployed token address for liquidity when `deployment-result.json` is not present.
@@ -62,6 +63,8 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 - `--bitverse-hooks <address>`: Bitverse V4 hooks address. Defaults to zero address.
 - `--bitverse-tick-lower <int24>` and `--bitverse-tick-upper <int24>`: Concentrated-liquidity price range ticks.
 - `--bitverse-position-liquidity <integer>`: Raw V4 liquidity units for `MINT_POSITION`.
+- `--bitverse-initialize-pool`: Optional. Initialize a brand-new Bitverse V4 pool before minting the first position.
+- `--bitverse-sqrt-price-x96 <integer>`: Optional explicit initial pool price. If omitted during initialization, the script derives it from planned token/native amounts.
 - `--yes`: Required with `--deploy` after explicit user confirmation.
 - `--confirm-mainnet`: Required with `--deploy --network mainnet`.
 - `--no-color`: Disable ANSI colors for console output.
@@ -96,6 +99,7 @@ When `--generate` is used, the script creates:
 - If `--install-project-scripts` was used, `npm run deploy` from the project root is just an alias to the guarded skill deployment command.
 - Liquidity is generated as a separate post-deploy script. Do not hide liquidity, fees, or swap logic inside the ERC20 contract.
 - Bitverse V4 liquidity is mainnet-only and uses PositionManager/Permit2. Validate contract bytecode, tick range, max token/native spend, and recipient before signing.
+- Bitverse V4 pool initialization sets the first pool price. Only use `--bitverse-initialize-pool` or `BITVERSE_INITIALIZE_POOL=true` for a brand-new pool after reviewing the intended price.
 - Adding liquidity is a write operation and can expose the user to impermanent loss; require explicit user confirmation before running it.
 - Foundry deployment requires `forge` in PATH.
 - Before any `--deploy`, confirm the token parameters, owner/deployer, network, and gas readiness with the user.

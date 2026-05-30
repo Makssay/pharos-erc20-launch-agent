@@ -40,6 +40,7 @@ This launch agent covers the broader launch process:
 - Treat DEX liquidity as a post-deploy action, not ERC20 contract logic.
 - Confirm router/PositionManager/Permit2 address, token address, token amount, native amount, slippage/tick range, and LP or position recipient before adding liquidity.
 - For Bitverse V4, confirm the pool is initialized and the chosen tick range/position liquidity match the intended price range.
+- If the pool is not initialized, require explicit `BITVERSE_INITIALIZE_POOL=true` or `--bitverse-initialize-pool`; initialization sets the initial pool price and should not be hidden inside a default flow.
 - Explain that liquidity can create impermanent-loss exposure and is irreversible once signed.
 - Do not deploy to mainnet unless the user explicitly confirms mainnet deployment.
 - Do not commit `node_modules`, `.env`, broadcast artifacts, or deployment files containing sensitive operational data.
