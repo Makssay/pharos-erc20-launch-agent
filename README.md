@@ -115,6 +115,28 @@ forge script script/DeployPharosLaunchToken.s.sol:DeployPharosLaunchToken --rpc-
 Use Pharos ERC20 Launch Agent to prepare a safe ERC20 launch plan called Demo Pharos Token with symbol DPT, supply 1000000, owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 on Pharos Atlantic testnet. Generate both Foundry and Node.js launch files, but do not deploy.
 ```
 
+Minimal mainnet deploy + liquidity prompt:
+
+```text
+Use pharos-erc20-launch-agent to generate, deploy, and add FaroSwap liquidity for an ERC20 token on Pharos mainnet.
+
+Token:
+- Name: Codex Liquidity Launch Token
+- Symbol: CLLT
+- Supply: 1000000
+- Owner: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
+- Deployer: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
+- Network: mainnet
+
+Liquidity:
+- Token amount: 100000 CLLT
+- Native amount: 0.5 PROS
+- Slippage: 100 bps
+- LP recipient: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
+```
+
+The skill should use the Node.js backend by default for this prompt. Foundry is optional and should not block this flow.
+
 ## Safety
 
 - Planning and file generation do not require private keys.
