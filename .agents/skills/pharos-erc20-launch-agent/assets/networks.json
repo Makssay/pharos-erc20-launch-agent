@@ -8,7 +8,9 @@
       "explorerApiUrl": "https://api.socialscan.io/pharos-atlantic-testnet",
       "nativeToken": "PHRS",
       "faroswap": {
-        "uniswapV2Router02": "0xf05Af5E9dC3b1dd3ad0C087BD80D7391283775e0",
+        "liquidityAvailable": false,
+        "unavailableReason": "FaroSwap liquidity adding is currently unavailable on atlantic-testnet. The token can be deployed and tested there, but add-liquidity is disabled until a working testnet router is confirmed.",
+        "documentedRouterCandidate": "0xf05Af5E9dC3b1dd3ad0C087BD80D7391283775e0",
         "uniswapV2Factory": "0x7b29694E8d44c154E3a2c20A6A2D665D65264e6e",
         "cpV2Factory": "0x8146e09183fb7ECae8339b31EE461Ef91aAd2E66",
         "docs": "https://docs.faroswap.xyz/en/developer/contracts-integration"

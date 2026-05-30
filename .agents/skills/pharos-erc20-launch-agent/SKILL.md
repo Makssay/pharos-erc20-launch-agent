@@ -21,7 +21,7 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 5. If the user wants launch files, add `--generate --output-dir <folder>`. By default this generates both Foundry and Node.js deployment paths.
 6. Use `--backend foundry`, `--backend node`, or `--backend both` when the user wants a specific deployment backend.
 7. If the user wants `npm run deploy` from the project where the skill is installed, add `--install-project-scripts` during generation. This creates or updates the current project's `package.json` with `pharos:erc20:*` scripts and a safe `deploy` alias when no conflicting deploy script exists.
-8. If the user wants a FaroSwap liquidity step, add `--generate-liquidity --liquidity-token-amount <amount> --liquidity-native-amount <amount>`. Use the configured FaroSwap router for Pharos mainnet or Atlantic testnet, and require explicit review before signing.
+8. If the user wants a FaroSwap liquidity step, add `--generate-liquidity --liquidity-token-amount <amount> --liquidity-native-amount <amount>` only for `mainnet`. FaroSwap liquidity adding is currently disabled on `atlantic-testnet`; if requested there, report that token deployment still works but add-liquidity is unavailable.
 9. If the user wants real deployment or liquidity, stop and request explicit confirmation. Only run deployment with `--deploy --yes`; for mainnet also require `--confirm-mainnet`.
 
 ## Inputs
@@ -52,7 +52,7 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 - `--liquidity-provider faroswap-v2`: Optional. Defaults to `faroswap-v2`.
 - `--liquidity-token-amount <amount>`: Token amount to add to the liquidity pair.
 - `--liquidity-native-amount <amount>`: Native PHRS/PROS amount to pair with the token.
-- `--liquidity-router <address>`: FaroSwap V2 router. Defaults to the documented Atlantic testnet router.
+- `--liquidity-router <address>`: FaroSwap router. Defaults to the configured mainnet router; `atlantic-testnet` liquidity is currently disabled even if a router is supplied.
 - `--faroswap-fee-rate <integer>`: FaroSwap AMM V2 fee rate. Defaults to `30` on mainnet, based on the observed FaroSwap transaction path.
 - `--liquidity-recipient <address>`: LP token recipient. Defaults to owner/deployer when available.
 - `--liquidity-slippage-bps <bps>`: Slippage tolerance in basis points. Defaults to `100`.
@@ -77,7 +77,7 @@ When `--generate` is used, the script creates:
 - `verification-checklist.md`: verification commands and checklist.
 - `airdrop-template.csv`: starter CSV for post-launch distribution.
 - `README.md`: generated project usage notes.
-- `add-liquidity.mjs`: optional FaroSwap liquidity script when `--generate-liquidity` is used.
+- `add-liquidity.mjs`: optional FaroSwap liquidity script when `--generate-liquidity` is used. On `atlantic-testnet`, the generated script exits with an unavailable message and sends no transaction.
 - `faroswap-liquidity-plan.md`: optional liquidity review plan.
 - Optional current-project `package.json` scripts when `--install-project-scripts` is used.
 
@@ -88,6 +88,7 @@ When `--generate` is used, the script creates:
 - Node.js deployment can be managed from the skill project with `--deploy --deploy-backend node --output-dir <folder> --yes`; the script reads `launch-config.json` from the generated folder and installs Node dependencies there when needed.
 - If `--install-project-scripts` was used, `npm run deploy` from the project root is just an alias to the guarded skill deployment command.
 - Liquidity is generated as a separate post-deploy script. Do not hide liquidity, fees, or swap logic inside the ERC20 contract.
+- FaroSwap liquidity adding is currently unavailable on `atlantic-testnet`; do not attempt to add liquidity there.
 - FaroSwap liquidity uses a router call generated as a separate script. Validate router bytecode, token address, token/native amounts, slippage, and recipient before signing.
 - Adding liquidity is a write operation and can expose the user to impermanent loss; require explicit user confirmation before running it.
 - Foundry deployment requires `forge` in PATH.

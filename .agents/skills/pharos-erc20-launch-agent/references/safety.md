@@ -6,7 +6,7 @@ This skill is designed as a launch workflow, not a blind deploy command.
 
 - **Plan-only:** validate parameters and produce a launch plan. No private key required.
 - **Generate:** create Solidity, Foundry, Node.js, verification, and post-launch files. No private key required.
-- **Generate FaroSwap liquidity:** create a separate `add-liquidity.mjs` script and `faroswap-liquidity-plan.md`. No private key required.
+- **Generate FaroSwap liquidity:** create a separate `add-liquidity.mjs` script and `faroswap-liquidity-plan.md`. No private key required. On `atlantic-testnet`, the generated liquidity script exits with an unavailable message and sends no transaction.
 - **Deploy with Foundry:** execute the generated `forge script` deployment path. Requires `forge`, explicit user confirmation, `--deploy --yes`, and `PRIVATE_KEY` in the local environment.
 - **Deploy with Node.js:** run the generated `deploy.mjs` path using `ethers` and `solc`. Can be launched from the skill project with `--output-dir <folder> --deploy --deploy-backend node --yes`; the script reads the generated `launch-config.json` and installs dependencies there when needed. If generation used `--install-project-scripts`, `npm run deploy` from the project root calls the same guarded command. Requires explicit user confirmation and `PRIVATE_KEY` in the local environment.
 - **Add liquidity:** run the generated liquidity script after token deployment. Requires `PRIVATE_KEY`, the deployed token address, enough token/native balance, and explicit confirmation.
@@ -37,6 +37,7 @@ This launch agent covers the broader launch process:
 - Do not print `PRIVATE_KEY`.
 - Treat project-root `npm run deploy` as a convenience wrapper only; it still requires `PRIVATE_KEY`, `--yes`, and mainnet confirmation logic inside the skill.
 - Treat DEX liquidity as a post-deploy action, not ERC20 contract logic.
+- Do not add FaroSwap liquidity on `atlantic-testnet`; token deployment/testing still works there, but liquidity adding is disabled until a working testnet router is confirmed.
 - Confirm router address, token address, token amount, native amount, slippage, and LP recipient before adding liquidity.
 - Explain that liquidity can create impermanent-loss exposure and is irreversible once signed.
 - Do not deploy to mainnet unless the user explicitly confirms mainnet deployment.

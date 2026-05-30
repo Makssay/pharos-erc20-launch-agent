@@ -59,8 +59,10 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 
 ## Generate FaroSwap Liquidity Files
 
+FaroSwap liquidity adding is currently disabled on `atlantic-testnet`. Use testnet for token deployment/testing, and generate liquidity files for `mainnet` after explicit review.
+
 ```powershell
-node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir .\demo-pharos-token-launch --install-project-scripts
+node .\.agents\skills\pharos-erc20-launch-agent\scripts\launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network mainnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 0.5 --output-dir .\demo-pharos-token-launch --install-project-scripts --confirm-mainnet
 ```
 
 Generated liquidity files:
@@ -77,6 +79,7 @@ cd .\demo-pharos-token-launch
 npm install --no-audit --no-fund
 $env:PRIVATE_KEY="..."
 $env:TOKEN_ADDRESS="0xDeployedTokenAddress"
+$env:RPC_URL="https://rpc.pharos.xyz"
 npm run add-liquidity
 ```
 
@@ -120,8 +123,10 @@ npm run deploy
 1. Show the skill folder and `SKILL.md`.
 2. Run `--help`.
 3. Run a plan-only testnet launch plan.
-4. Run `--generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir demo-pharos-token-launch --install-project-scripts`.
-5. Open generated `launch-plan.md`, `faroswap-liquidity-plan.md`, `src/PharosLaunchToken.sol`, `deploy.mjs`, `add-liquidity.mjs`, generated `package.json`, project-root `package.json`, and `verification-checklist.md`.
-6. Show that no private key is needed for planning or file generation.
-7. Show the managed project-root commands: `npm run pharos:erc20:plan`, `npm run deploy`, and `npm run pharos:erc20:liquidity`.
-8. Optionally show the guarded deploy command, but avoid exposing any private key in video.
+4. Run `--generate --backend node --output-dir demo-pharos-token-launch --install-project-scripts` on `atlantic-testnet`.
+5. Optionally run the same command with `--generate-liquidity` on `atlantic-testnet` to show the safety message that testnet liquidity is unavailable.
+6. Open generated `launch-plan.md`, `src/PharosLaunchToken.sol`, `deploy.mjs`, generated `package.json`, project-root `package.json`, and `verification-checklist.md`.
+7. For liquidity, show a separate `mainnet --generate-liquidity` plan and open `faroswap-liquidity-plan.md` without signing transactions.
+8. Show that no private key is needed for planning or file generation.
+9. Show the managed project-root commands: `npm run pharos:erc20:plan`, `npm run deploy`, and, for mainnet liquidity projects, `npm run pharos:erc20:liquidity`.
+10. Optionally show the guarded deploy command, but avoid exposing any private key in video.

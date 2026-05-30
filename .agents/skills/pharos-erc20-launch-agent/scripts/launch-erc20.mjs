@@ -353,7 +353,7 @@ Options:
   --liquidity-provider      faroswap-v2
   --liquidity-token-amount  Token amount to pair with native PHRS/PROS
   --liquidity-native-amount Native amount to pair with token
-  --liquidity-router <addr> FaroSwap V2 router; default is known testnet router
+  --liquidity-router <addr> FaroSwap router; testnet liquidity is disabled
   --faroswap-fee-rate       FaroSwap AMM V2 fee rate, default 30 on mainnet
   --liquidity-recipient     LP token recipient; defaults to owner/deployer
   --liquidity-slippage-bps  Slippage in basis points, default 100
@@ -366,7 +366,7 @@ Examples:
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch
   node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend both --output-dir demo-pharos-token-launch --install-project-scripts
-  node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network atlantic-testnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 10 --output-dir demo-pharos-token-launch
+  node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1000000 --owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 --network mainnet --generate --backend node --generate-liquidity --liquidity-token-amount 100000 --liquidity-native-amount 0.5 --output-dir demo-pharos-token-launch --confirm-mainnet
   node scripts/launch-erc20.mjs --output-dir demo-pharos-token-launch --deploy --deploy-backend node --yes
 `);
 }
@@ -511,6 +511,7 @@ function buildLiquiditySpec(args, network, token) {
 function buildFaroSwapLiquiditySpec(args, network, token) {
   const router = args.liquidityRouter || network.faroswap?.ammV2Router || network.faroswap?.uniswapV2Router02 || null;
   const routerKind = network.faroswap?.routerKind || (network.faroswap?.ammV2Router ? "faroswap-amm-v2" : "uniswap-v2");
+  const available = isFaroSwapLiquidityAvailable(network);
   const tokenAmountBaseUnits = args.liquidityTokenAmount ? parseDecimalUnits(args.liquidityTokenAmount, token.decimals, "--liquidity-token-amount").toString() : null;
   const nativeAmountWei = args.liquidityNativeAmount ? parseDecimalUnits(args.liquidityNativeAmount, 18, "--liquidity-native-amount").toString() : null;
   const slippageBps = parseInteger(args.liquiditySlippageBps, "--liquidity-slippage-bps", 0, 5000);
@@ -521,6 +522,8 @@ function buildFaroSwapLiquiditySpec(args, network, token) {
   return {
     protocol: "faroswap-v2",
     pair: `${token.symbol}/${network.nativeToken}`,
+    available,
+    unavailableReason: available ? null : faroSwapLiquidityUnavailableReason(network),
     router,
     routerKind,
     routerSource: args.liquidityRouter ? "cli" : network.faroswap?.ammV2Router ? "faroswap-mainnet-tx" : network.faroswap?.uniswapV2Router02 ? "faroswap-docs" : "missing",
@@ -538,6 +541,15 @@ function buildFaroSwapLiquiditySpec(args, network, token) {
     nativeToken: network.nativeToken,
     docs: network.faroswap?.docs || "https://docs.faroswap.xyz/en/developer/contracts-integration"
   };
+}
+
+function isFaroSwapLiquidityAvailable(network) {
+  return network.name !== "atlantic-testnet" && network.faroswap?.liquidityAvailable !== false;
+}
+
+function faroSwapLiquidityUnavailableReason(network) {
+  return network.faroswap?.unavailableReason ||
+    `FaroSwap liquidity adding is currently unavailable on ${network.name}. Token deployment can still be tested, but add-liquidity is disabled for this network.`;
 }
 
 function createBasePlan(args, network, token) {
@@ -602,6 +614,11 @@ function addLiquidityChecks(plan, args, network, token) {
 }
 
 function addFaroSwapLiquidityChecks(plan, args, network, token, liquidity) {
+  if (liquidity.available === false) {
+    addCheck(plan, "FAIL", liquidity.unavailableReason);
+    if (args.generateLiquidity) addCheck(plan, "WARN", "Generated add-liquidity script will exit with this message instead of sending a transaction.");
+    return;
+  }
   if (liquidity.router) addCheck(plan, ADDRESS_RE.test(liquidity.router) ? "OK" : "FAIL", ADDRESS_RE.test(liquidity.router) ? `FaroSwap V2 router selected: ${compactAddress(liquidity.router)} (${liquidity.routerKind}).` : "Liquidity router is invalid. Expected 0x plus 40 hex characters.");
   else addCheck(plan, "FAIL", "No FaroSwap V2 router is known for this network. Pass --liquidity-router explicitly.");
   if (network.name !== "atlantic-testnet" && network.name !== "mainnet" && !args.liquidityRouter) addCheck(plan, "WARN", "FaroSwap default router is only configured for known Pharos networks; custom networks require an explicit reviewed router.");
@@ -652,7 +669,7 @@ async function addRpcChecks(plan, args, network) {
     }
   }
 
-  if (plan.liquidity?.protocol === "faroswap-v2" && plan.liquidity.router && ADDRESS_RE.test(plan.liquidity.router)) {
+  if (plan.liquidity?.protocol === "faroswap-v2" && plan.liquidity.available !== false && plan.liquidity.router && ADDRESS_RE.test(plan.liquidity.router)) {
     try {
       const routerCode = await rpc(network.rpcUrl, "eth_getCode", [plan.liquidity.router, "latest"]);
       addCheck(plan, routerCode && routerCode !== "0x" ? "OK" : "FAIL", routerCode && routerCode !== "0x" ? "FaroSwap router bytecode exists on the selected network." : "FaroSwap router address has no contract bytecode on the selected network.");
@@ -687,7 +704,7 @@ function addEstimates(plan, args, network) {
   plan.estimates.deployGasLimit = DEFAULT_DEPLOY_GAS.toString();
   plan.estimates.estimatedDeployCostWei = estimatedCostWei.toString();
   plan.estimates.estimatedDeployCostNative = formatUnits(estimatedCostWei, 18, 8);
-  if (plan.liquidity) {
+  if (plan.liquidity && plan.liquidity.available !== false) {
     const liquidityCostWei = gasPriceWei * DEFAULT_LIQUIDITY_GAS;
     plan.estimates.liquidityGasLimit = DEFAULT_LIQUIDITY_GAS.toString();
     plan.estimates.estimatedLiquidityGasCostWei = liquidityCostWei.toString();
@@ -708,8 +725,12 @@ function addRecommendations(plan, args, token) {
   if (token.decimals > 18) plan.recommendations.push("Use 18 decimals or less unless there is a strong reason.");
   if (!args.generate && !args.deploy) plan.recommendations.push("Use --generate --output-dir <folder> to create reviewable launch files.");
   if (plan.liquidity) {
-    plan.recommendations.push(`Review ${liquidityDisplayName(plan.liquidity)} contract addresses and liquidity amounts before adding liquidity.`);
-    plan.recommendations.push("Add liquidity only after the ERC20 deployment result and token balance are confirmed.");
+    if (plan.liquidity.available === false) {
+      plan.recommendations.push("Omit --generate-liquidity on atlantic-testnet; deploy and test the token there, then use mainnet for FaroSwap liquidity after explicit confirmation.");
+    } else {
+      plan.recommendations.push(`Review ${liquidityDisplayName(plan.liquidity)} contract addresses and liquidity amounts before adding liquidity.`);
+      plan.recommendations.push("Add liquidity only after the ERC20 deployment result and token balance are confirmed.");
+    }
   }
   if (plan.network.name === "mainnet") plan.recommendations.push("Run the same launch on atlantic-testnet before mainnet deployment.");
   plan.recommendations.push("Review generated Solidity and verification commands before deployment.");
@@ -1061,8 +1082,13 @@ function buildCommands(network, backends = ["foundry", "node"], includeLiquidity
     commands.bash.push("# Node.js deployer", ...commands.node.bash);
   }
   if (includeLiquidity) {
+    const liquidityAvailable = isFaroSwapLiquidityAvailable(network);
     commands.liquidity = {
       powershell: [
+        ...(liquidityAvailable ? [] : [
+          "# FaroSwap liquidity is currently unavailable on this network.",
+          "# npm run add-liquidity will exit with an explanation and will not send a transaction."
+        ]),
         "npm install --no-audit --no-fund",
         "$env:PRIVATE_KEY=\"paste_private_key_here\"",
         "# Optional if deployment-result.json is not present:",
@@ -1071,6 +1097,10 @@ function buildCommands(network, backends = ["foundry", "node"], includeLiquidity
         "npm run add-liquidity"
       ],
       bash: [
+        ...(liquidityAvailable ? [] : [
+          "# FaroSwap liquidity is currently unavailable on this network.",
+          "# npm run add-liquidity will exit with an explanation and will not send a transaction."
+        ]),
         "npm install --no-audit --no-fund",
         "export PRIVATE_KEY=\"paste_private_key_here\"",
         "# Optional if deployment-result.json is not present:",
@@ -1243,6 +1273,8 @@ function bigintJsonReplacer(_key, value) {
 }
 
 function renderFaroSwapLiquidityScript(network, token, liquidity) {
+  if (liquidity.available === false) return renderUnavailableLiquidityScript(network, token, liquidity);
+
   const networkJson = JSON.stringify({
     name: network.name,
     chainId: network.chainId,
@@ -1286,6 +1318,9 @@ main().catch((error) => {
 });
 
 async function main() {
+  if (LIQUIDITY.available === false || NETWORK.name === "atlantic-testnet") {
+    throw new Error(LIQUIDITY.unavailableReason || "FaroSwap liquidity adding is currently unavailable on " + NETWORK.name + ". Token deployment can still be tested, but add-liquidity is disabled for this network.");
+  }
   if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment");
   if (!LIQUIDITY.router || !ethers.isAddress(LIQUIDITY.router)) throw new Error("Valid FaroSwap router address is required");
   if (!LIQUIDITY.tokenAmountBaseUnits) throw new Error("liquidity token amount is missing in launch-config.json");
@@ -1435,11 +1470,45 @@ function bigintJsonReplacer(_key, value) {
 `;
 }
 
+function renderUnavailableLiquidityScript(network, token, liquidity) {
+  return `#!/usr/bin/env node
+console.error("Liquidity add unavailable:", ${JSON.stringify(liquidity.unavailableReason)});
+console.error("Network:", ${JSON.stringify(network.name)});
+console.error("Token:", ${JSON.stringify(token.symbol)});
+console.error("No transaction was sent.");
+process.exit(1);
+`;
+}
+
 function renderFaroSwapLiquidityPlan(network, token, liquidity) {
+  const usageBlock = liquidity.available === false
+    ? `## Usage
+
+FaroSwap liquidity adding is currently disabled for ${network.name}. The generated \`add-liquidity.mjs\` script will exit with this message before requesting a private key or sending any transaction:
+
+\`\`\`text
+${liquidity.unavailableReason}
+\`\`\`
+
+Deploy and test the ERC20 on ${network.name}, then use Pharos mainnet for FaroSwap liquidity after explicit confirmation.
+`
+    : `## Usage
+
+After ERC20 deployment, either keep \`deployment-result.json\` in this folder or set \`TOKEN_ADDRESS\`.
+
+\`\`\`powershell
+npm install --no-audit --no-fund
+$env:PRIVATE_KEY="paste_private_key_here"
+$env:TOKEN_ADDRESS="0xDeployedTokenAddress"
+npm run add-liquidity
+\`\`\`
+`;
   return `# FaroSwap Liquidity Plan
 
 Protocol: FaroSwap V2-style liquidity
 Network: ${network.name}
+Status: ${liquidity.available === false ? "unavailable on this network" : "available after deployment"}
+${liquidity.available === false ? `Reason: ${liquidity.unavailableReason}` : ""}
 Router: ${liquidity.router || "missing"}
 Router kind: ${liquidity.routerKind || "uniswap-v2"}
 Fee rate: ${liquidity.routerKind === "faroswap-amm-v2" ? liquidity.feeRate : "not used"}
@@ -1454,19 +1523,11 @@ Pair: ${liquidity.pair}
 - Slippage: ${liquidity.slippageBps} bps
 - LP recipient: ${liquidity.recipient || "deployer wallet"}
 
-## Usage
-
-After ERC20 deployment, either keep \`deployment-result.json\` in this folder or set \`TOKEN_ADDRESS\`.
-
-\`\`\`powershell
-npm install --no-audit --no-fund
-$env:PRIVATE_KEY="paste_private_key_here"
-$env:TOKEN_ADDRESS="0xDeployedTokenAddress"
-npm run add-liquidity
-\`\`\`
+${usageBlock}
 
 ## Safety
 
+- On ${network.name}, respect the status above before attempting liquidity.
 - Confirm the FaroSwap router address before signing.
 - Confirm token and native amounts before signing.
 - Adding liquidity is a real write operation and can expose you to impermanent loss.
@@ -1569,7 +1630,17 @@ npm run compile-check
 `);
   }
   if (includeLiquidity && commands.liquidity) {
-    sections.push(`## Add Liquidity On FaroSwap
+    if (!isFaroSwapLiquidityAvailable(network)) {
+      sections.push(`## FaroSwap Liquidity
+
+FaroSwap liquidity adding is currently unavailable on ${network.name}. The generated \`add-liquidity.mjs\` script exits with an explanation before requesting a private key or sending a transaction.
+
+Reason: ${faroSwapLiquidityUnavailableReason(network)}
+
+Use this project to deploy and test the ERC20 on ${network.name}. Add FaroSwap liquidity on Pharos mainnet only after explicit confirmation.
+`);
+    } else {
+      sections.push(`## Add Liquidity On FaroSwap
 
 The generated \`add-liquidity.mjs\` script creates a FaroSwap ${token.symbol}/${network.nativeToken} liquidity position. It reads \`deployment-result.json\` after token deployment or uses \`TOKEN_ADDRESS\` from the environment.
 
@@ -1581,6 +1652,7 @@ ${commands.liquidity.powershell.join("\n")}
 
 Review \`faroswap-liquidity-plan.md\` before signing.
 `);
+    }
   }
 
   sections.push(`## Managed Deploy From Skill Project
@@ -1747,6 +1819,10 @@ function renderMarkdown(plan) {
   if (plan.liquidity) {
     lines.push(`## ${liquidityDisplayName(plan.liquidity)} Liquidity`, "");
     lines.push(`- Pair: \`${plan.liquidity.pair}\``);
+    if (plan.liquidity.available === false) {
+      lines.push("- Status: `unavailable on this network`");
+      lines.push(`- Reason: ${plan.liquidity.unavailableReason}`);
+    }
     lines.push(`- Router: \`${plan.liquidity.router || "missing"}\``);
     if (plan.liquidity.routerKind) lines.push(`- Router kind: \`${plan.liquidity.routerKind}\``);
     if (plan.liquidity.feeRate !== undefined && plan.liquidity.routerKind === "faroswap-amm-v2") lines.push(`- Fee rate: \`${plan.liquidity.feeRate}\``);
@@ -1761,7 +1837,7 @@ function renderMarkdown(plan) {
   lines.push(`- Gas price: \`${plan.estimates.gasPriceWei || "fallback 10000000000"} wei\``);
   lines.push(`- Deployment gas limit estimate: \`${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}\``);
   lines.push(`- Estimated deployment cost: \`${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}\``);
-  if (plan.liquidity) lines.push(`- Estimated liquidity gas cost: \`${plan.estimates.estimatedLiquidityGasCostNative || "pending"} ${plan.network.nativeToken}\``);
+  if (plan.liquidity && plan.liquidity.available !== false) lines.push(`- Estimated liquidity gas cost: \`${plan.estimates.estimatedLiquidityGasCostNative || "pending"} ${plan.network.nativeToken}\``);
   if (plan.estimates.deployerBalanceWei) lines.push(`- Deployer balance: \`${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken}\``);
   if (plan.generatedProjectDir) {
     lines.push("", "## Generated Project", "", "Directory: current launch project folder", "");
@@ -1818,6 +1894,10 @@ function renderConsole(plan, args) {
     lines.push(boxLine("mid", width));
     lines.push(boxText(`${liquidityDisplayName(plan.liquidity)} liquidity`, width));
     lines.push(boxText(`Pair       ${plan.liquidity.pair}`, width));
+    if (plan.liquidity.available === false) {
+      lines.push(boxText("Status     unavailable on this network", width));
+      lines.push(boxText(`Reason     ${plan.liquidity.unavailableReason}`, width));
+    }
     lines.push(boxText(`Router     ${compactAddress(plan.liquidity.router || "missing")}`, width));
     if (plan.liquidity.routerKind === "faroswap-amm-v2") lines.push(boxText(`Fee rate   ${plan.liquidity.feeRate}`, width));
     lines.push(boxText(`Token amt  ${plan.liquidity.tokenAmountInput || "missing"} ${plan.token.symbol}`, width));
@@ -1832,7 +1912,7 @@ function renderConsole(plan, args) {
   lines.push(boxText(`Gas price  ${plan.estimates.gasPriceWei || "fallback 10000000000"} wei`, width));
   lines.push(boxText(`Gas limit  ${plan.estimates.deployGasLimit || DEFAULT_DEPLOY_GAS.toString()}`, width));
   lines.push(boxText(`Cost       ${plan.estimates.estimatedDeployCostNative || "pending"} ${plan.network.nativeToken}`, width));
-  if (plan.liquidity) lines.push(boxText(`Liq gas    ${plan.estimates.estimatedLiquidityGasCostNative || "pending"} ${plan.network.nativeToken}`, width));
+  if (plan.liquidity && plan.liquidity.available !== false) lines.push(boxText(`Liq gas    ${plan.estimates.estimatedLiquidityGasCostNative || "pending"} ${plan.network.nativeToken}`, width));
   if (plan.estimates.deployerBalanceWei) {
     lines.push(boxText(`Balance    ${formatUnits(BigInt(plan.estimates.deployerBalanceWei), 18, 6)} ${plan.network.nativeToken}`, width));
   }
