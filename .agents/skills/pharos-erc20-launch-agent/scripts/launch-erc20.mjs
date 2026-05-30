@@ -32,6 +32,9 @@ main().catch((error) => {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  loadDotEnvFile(path.join(process.cwd(), ".env"));
+  if (args.outputDir) loadDotEnvFile(path.join(path.resolve(args.outputDir), ".env"));
+
   if (args.help) {
     printHelp();
     return;
@@ -291,6 +294,25 @@ function parseArgs(argv) {
   if (args.deploy && !args.backends.includes(args.deployBackend)) args.backends.push(args.deployBackend);
   if (args.generateLiquidity && !args.backends.includes("node")) args.backends.push("node");
   return args;
+}
+
+function loadDotEnvFile(envPath) {
+  if (!envPath || !fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    let trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (trimmed.startsWith("export ")) trimmed = trimmed.slice("export ".length).trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) continue;
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
 }
 
 function readValue(argv, index, flag) {
@@ -603,7 +625,7 @@ function addStaticChecks(plan, args, network, token) {
   if (args.deploy) {
     if (!args.yes) addCheck(plan, "FAIL", "Deployment mode requires --yes after explicit user confirmation.");
     if (network.name === "mainnet" && !args.confirmMainnet) addCheck(plan, "FAIL", "Mainnet deployment requires --confirm-mainnet.");
-    if (!process.env.PRIVATE_KEY) addCheck(plan, "FAIL", "Deployment mode requires PRIVATE_KEY in the local environment.");
+    if (!process.env.PRIVATE_KEY) addCheck(plan, "FAIL", "Deployment mode requires PRIVATE_KEY in the local environment or generated project .env file.");
   }
 }
 
@@ -1009,9 +1031,12 @@ optimizer_runs = 200
 }
 
 function renderEnvExample(network, args) {
-  return `# Never commit real private keys.
+  return `# Copy this file to .env before real deployment or liquidity.
+# Never commit real private keys.
 PRIVATE_KEY=
 RPC_URL=${args.rpcUrl || network.rpcUrl}
+# Optional for liquidity if deployment-result.json is not present:
+TOKEN_ADDRESS=
 `;
 }
 
@@ -1155,6 +1180,8 @@ const SOURCE_PATH = path.join(__dirname, "src", SOURCE_NAME);
 const ZERO_ADDRESS = "${ZERO_ADDRESS}";
 const COMPILE_ONLY = process.argv.includes("--compile-only");
 
+loadDotEnv();
+
 const NETWORK = {
   name: "${network.name}",
   chainId: ${network.chainId},
@@ -1182,7 +1209,7 @@ async function main() {
   console.log("Bytecode bytes:", (compiled.bytecode.length - 2) / 2);
 
   if (COMPILE_ONLY) return;
-  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment");
+  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment or this folder's .env file");
 
   const provider = new ethers.JsonRpcProvider(NETWORK.rpcUrl);
   const connectedNetwork = await provider.getNetwork();
@@ -1232,6 +1259,26 @@ async function main() {
   console.log("Token address:", address);
   console.log("Explorer:", report.explorerAddressUrl);
   console.log("Saved: deployment-result.json");
+}
+
+function loadDotEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, "utf8").split(/\\r?\\n/);
+  for (const line of lines) {
+    let trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (trimmed.startsWith("export ")) trimmed = trimmed.slice("export ".length).trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) continue;
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
 }
 
 function compileContract() {
@@ -1295,6 +1342,9 @@ import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+loadDotEnv();
+
 const NETWORK = ${networkJson};
 const TOKEN = ${tokenJson};
 const LIQUIDITY = ${liquidityJson};
@@ -1321,7 +1371,7 @@ async function main() {
   if (LIQUIDITY.available === false || NETWORK.name === "atlantic-testnet") {
     throw new Error(LIQUIDITY.unavailableReason || "FaroSwap liquidity adding is currently unavailable on " + NETWORK.name + ". Token deployment can still be tested, but add-liquidity is disabled for this network.");
   }
-  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment");
+  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is required in the local environment or this folder's .env file");
   if (!LIQUIDITY.router || !ethers.isAddress(LIQUIDITY.router)) throw new Error("Valid FaroSwap router address is required");
   if (!LIQUIDITY.tokenAmountBaseUnits) throw new Error("liquidity token amount is missing in launch-config.json");
   if (!LIQUIDITY.nativeAmountWei) throw new Error("liquidity native amount is missing in launch-config.json");
@@ -1453,6 +1503,26 @@ async function main() {
   console.log("Saved: liquidity-result.json");
 }
 
+function loadDotEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, "utf8").split(/\\r?\\n/);
+  for (const line of lines) {
+    let trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (trimmed.startsWith("export ")) trimmed = trimmed.slice("export ".length).trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) continue;
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith("\\"") && value.endsWith("\\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
 function resolveTokenAddress() {
   if (process.env.TOKEN_ADDRESS) return process.env.TOKEN_ADDRESS;
   const deploymentPath = path.join(__dirname, "deployment-result.json");
@@ -1498,6 +1568,8 @@ After ERC20 deployment, either keep \`deployment-result.json\` in this folder or
 
 \`\`\`powershell
 npm install --no-audit --no-fund
+Copy-Item .env.example .env
+# Edit .env and set PRIVATE_KEY. TOKEN_ADDRESS is optional when deployment-result.json exists.
 $env:PRIVATE_KEY="paste_private_key_here"
 $env:TOKEN_ADDRESS="0xDeployedTokenAddress"
 npm run add-liquidity
@@ -1590,6 +1662,20 @@ Generated by Pharos ERC20 Launch Agent.
 - Network: ${network.name}
 `);
 
+  sections.push(`## Private Key Setup
+
+For real deployment or liquidity, copy \`.env.example\` to \`.env\` in this launch folder and set \`PRIVATE_KEY\`.
+
+\`\`\`powershell
+Copy-Item .env.example .env
+# Edit .env:
+# PRIVATE_KEY=0xYOUR_PRIVATE_KEY
+# RPC_URL=${network.rpcUrl}
+\`\`\`
+
+The generated Node.js scripts load \`.env\` automatically. Shell variables such as \`$env:PRIVATE_KEY\` still work and override values from \`.env\`. Never commit \`.env\` or paste the private key into an AI prompt.
+`);
+
   if (commands.foundry) {
     sections.push(`## Deploy With Foundry
 
@@ -1658,6 +1744,7 @@ Review \`faroswap-liquidity-plan.md\` before signing.
   sections.push(`## Managed Deploy From Skill Project
 
 You can also deploy from the project where the skill is installed. The skill reads this folder's \`launch-config.json\` and runs the selected backend inside the generated launch folder.
+If \`PRIVATE_KEY\` is stored in this launch folder's \`.env\`, the managed deploy command loads it before broadcasting.
 
 PowerShell:
 
@@ -1688,7 +1775,7 @@ Do not commit real private keys. Review \`src/${token.contractName}.sol\` and ge
 function runDeploy(args, network) {
   if (!args.yes) throw new Error("--deploy requires --yes after explicit user confirmation");
   if (network.name === "mainnet" && !args.confirmMainnet) throw new Error("--deploy on mainnet requires --confirm-mainnet");
-  if (!process.env.PRIVATE_KEY) throw new Error("--deploy requires PRIVATE_KEY in the local environment");
+  if (!process.env.PRIVATE_KEY) throw new Error("--deploy requires PRIVATE_KEY in the local environment or generated project .env file");
   if (!args.outputDir) throw new Error("--deploy requires --output-dir so the generated project location is explicit");
   return args.deployBackend === "node" ? runNodeDeploy(args, network) : runFoundryDeploy(args, network);
 }

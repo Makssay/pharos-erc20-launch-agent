@@ -32,7 +32,7 @@ node scripts/launch-erc20.mjs --name "Demo Pharos Token" --symbol DPT --supply 1
 - If the user asks to "generate, deploy" or "launch" a token and provides token params, infer `--generate --backend node --install-project-scripts --deploy --deploy-backend node --yes`. If the network is `mainnet`, also include `--confirm-mainnet`.
 - If the user asks to add FaroSwap liquidity and the network is `mainnet`, infer `--generate-liquidity`, `--liquidity-token-amount`, `--liquidity-native-amount`, `--liquidity-slippage-bps`, and `--liquidity-recipient` from the prompt, then deploy first and run the generated liquidity command after deployment succeeds.
 - If the user asks to add liquidity on `atlantic-testnet`, do not attempt the transaction. Explain that testnet liquidity is unavailable and that the generated script exits without sending a transaction.
-- Use the local `PRIVATE_KEY` environment variable for deployment and liquidity. Check whether it exists, but never print or save it.
+- Use the local `PRIVATE_KEY` environment variable or the generated launch folder's `.env` file for deployment and liquidity. Check whether it exists, but never print it or write it into generated files.
 - Do not stop after checking for `forge` if Node.js is available. Continue with `--backend node`.
 - Do not ask follow-up questions when the prompt already includes token name, symbol, supply, owner, deployer, network, and liquidity amounts.
 
@@ -102,7 +102,7 @@ When `--generate` is used, the script creates:
 - `foundry.toml`: minimal Foundry config.
 - `package.json`: Node.js deployer dependencies and scripts.
 - `deploy.mjs`: Node.js deployer using `ethers` and `solc`.
-- `.env.example`: private-key and launch variable template.
+- `.env.example`: private-key and launch variable template. Copy it to `.env` locally for real deployment; `.env` is git-ignored.
 - `.gitignore`: ignores private keys, node dependencies, and deployment artifacts.
 - `launch-config.json`: machine-readable launch parameters.
 - `launch-plan.md`: human-readable launch plan.
@@ -117,7 +117,7 @@ When `--generate` is used, the script creates:
 
 - Planning and generation are read-only and must not request private keys.
 - Never write private keys to files.
-- Node.js deployment can be managed from the skill project with `--deploy --deploy-backend node --output-dir <folder> --yes`; the script reads `launch-config.json` from the generated folder and installs Node dependencies there when needed.
+- Node.js deployment can be managed from the skill project with `--deploy --deploy-backend node --output-dir <folder> --yes`; the script reads `launch-config.json` and `.env` from the generated folder and installs Node dependencies there when needed.
 - If `--install-project-scripts` was used, `npm run deploy` from the project root is just an alias to the guarded skill deployment command.
 - Liquidity is generated as a separate post-deploy script. Do not hide liquidity, fees, or swap logic inside the ERC20 contract.
 - FaroSwap liquidity adding is currently unavailable on `atlantic-testnet`; do not attempt to add liquidity there.

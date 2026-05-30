@@ -77,6 +77,8 @@ After token deployment:
 ```powershell
 cd .\demo-pharos-token-launch
 npm install --no-audit --no-fund
+Copy-Item .env.example .env
+# Edit .env and set PRIVATE_KEY. TOKEN_ADDRESS is optional when deployment-result.json exists.
 $env:PRIVATE_KEY="..."
 $env:TOKEN_ADDRESS="0xDeployedTokenAddress"
 $env:RPC_URL="https://rpc.pharos.xyz"
@@ -90,10 +92,14 @@ Only run this after explicit confirmation from the user.
 ## Minimal Agent Prompt For Mainnet Liquidity
 
 ```text
-Use pharos-erc20-launch-agent to generate, deploy, and add FaroSwap liquidity for an ERC20 token on Pharos mainnet.
+[$pharos-erc20-launch-agent](C:\\Users\\User\\.agents\\skills\\pharos-erc20-launch-agent\\SKILL.md)
+
+generate, deploy, and add FaroSwap liquidity for an ERC20 token on Pharos mainnet.
+
+Use the Node.js backend. Do not require Foundry, forge, cast, Bash, Git Bash, or WSL.
 
 Token:
-- Name: Codex Liquidity Launch Token
+- Name: Token Name
 - Symbol: CLLT
 - Supply: 1000000
 - Owner: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
@@ -101,11 +107,14 @@ Token:
 - Network: mainnet
 
 Liquidity:
+- Pair: CLLT/PROS
 - Token amount: 100000 CLLT
 - Native amount: 0.5 PROS
 - Slippage: 100 bps
 - LP recipient: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
 ```
+
+Before using this prompt for real deployment, set `PRIVATE_KEY` in the generated launch folder's `.env` file or as a local environment variable. Never include the private key in the prompt.
 
 Expected agent behavior: use `--backend node`, `--deploy-backend node`, `--generate-liquidity`, `--install-project-scripts`, and `--confirm-mainnet`. Do not require Foundry unless the prompt explicitly asks for Foundry.
 
