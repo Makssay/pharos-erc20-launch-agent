@@ -65,6 +65,30 @@ npm install --no-audit --no-fund
 npm run compile-check
 ```
 
+## Private Key / `.env`
+
+Planning and file generation do not need a private key. For real deployment or FaroSwap liquidity, create a local `.env` file in the generated launch folder:
+
+```powershell
+cd ".\erc20-launch-demo"
+Copy-Item .env.example .env
+```
+
+Then edit `.env`:
+
+```env
+PRIVATE_KEY=0xYOUR_PRIVATE_KEY
+RPC_URL=https://rpc.pharos.xyz
+```
+
+For liquidity, `TOKEN_ADDRESS` is optional if `deployment-result.json` exists:
+
+```env
+TOKEN_ADDRESS=0xDEPLOYED_TOKEN_ADDRESS
+```
+
+The generated Node.js scripts load `.env` automatically. PowerShell variables like `$env:PRIVATE_KEY` still work and override `.env`. Never paste the private key into an AI prompt and never commit `.env`.
+
 Deploy with Node.js after review:
 
 ```powershell
@@ -115,13 +139,17 @@ forge script script/DeployPharosLaunchToken.s.sol:DeployPharosLaunchToken --rpc-
 Use Pharos ERC20 Launch Agent to prepare a safe ERC20 launch plan called Demo Pharos Token with symbol DPT, supply 1000000, owner 0xf337687dD73c1A13EFE39393a000f55a95B1ac54 on Pharos Atlantic testnet. Generate both Foundry and Node.js launch files, but do not deploy.
 ```
 
-Minimal mainnet deploy + liquidity prompt:
+Mainnet deploy + FaroSwap liquidity prompt for an AI agent:
 
 ```text
-Use pharos-erc20-launch-agent to generate, deploy, and add FaroSwap liquidity for an ERC20 token on Pharos mainnet.
+[$pharos-erc20-launch-agent](C:\\Users\\User\\.agents\\skills\\pharos-erc20-launch-agent\\SKILL.md)
+
+generate, deploy, and add FaroSwap liquidity for an ERC20 token on Pharos mainnet.
+
+Use the Node.js backend. Do not require Foundry, forge, cast, Bash, Git Bash, or WSL.
 
 Token:
-- Name: Codex Liquidity Launch Token
+- Name: Token Name
 - Symbol: CLLT
 - Supply: 1000000
 - Owner: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
@@ -129,11 +157,14 @@ Token:
 - Network: mainnet
 
 Liquidity:
+- Pair: CLLT/PROS
 - Token amount: 100000 CLLT
 - Native amount: 0.5 PROS
 - Slippage: 100 bps
 - LP recipient: 0xf337687dD73c1A13EFE39393a000f55a95B1ac54
 ```
+
+Before using the deploy/liquidity prompt, put `PRIVATE_KEY` in the generated launch folder's `.env` file or set it as a local environment variable. The private key should never be included in the prompt text.
 
 The skill should use the Node.js backend by default for this prompt. Foundry is optional and should not block this flow.
 
@@ -144,7 +175,7 @@ The skill should use the Node.js backend by default for this prompt. Foundry is 
 - Use Atlantic testnet before mainnet.
 - Mainnet deployment should require explicit confirmation.
 - Review generated Solidity, launch config, and verification checklist before broadcasting.
-- Project-root `npm run deploy` is a wrapper around the same guarded skill command; it still requires `PRIVATE_KEY`.
+- Project-root `npm run deploy` is a wrapper around the same guarded skill command; it still requires `PRIVATE_KEY` from the shell or generated launch folder `.env`.
 - FaroSwap liquidity adding is currently unavailable on Atlantic testnet; generated testnet liquidity scripts exit before sending transactions.
 - FaroSwap liquidity is a separate post-deploy action. Confirm router, token address, amounts, slippage, and recipient before signing.
 
